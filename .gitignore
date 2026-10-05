@@ -2,10 +2,12 @@
 .env
 
 # python
+ python
 .venv/
 __pycache__/
 *.pyc
 *.db
+.pytest_cache/
 
 # node
 node_modules/
