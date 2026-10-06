@@ -49,7 +49,7 @@ def create_owner(owner_in: OwnerCreate, session: SessionDep):
 @app.get("/owners/{owner_id}", response_model=Owner)
 def get_owner(owner_id: int, session: SessionDep):
     owner = session.get(Owner, owner_id)
-    if  owner:
+    if not owner:
         raise HTTPException(status_code=404, detail="Owner not found")
     return owner
 
