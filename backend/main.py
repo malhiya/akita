@@ -92,6 +92,10 @@ def delete_pet(pet_id: int, session: SessionDep):
     pet = session.get(Pet, pet_id)
     if not pet:
         raise HTTPException(status_code=404, detail="Pet not found")
+
+    for task in session.exec(select(Task).where(Task.pet_id == pet_id)).all():
+        session.delete(task)
+
     session.delete(pet)
     session.commit()
     return {"ok": True}
@@ -124,3 +128,9 @@ def delete_task(task_id: int, session: SessionDep):
     session.delete(task)
     session.commit()
     return {"ok": True}
+
+@app.get("/owners/{owner_id}/tasks", response_model=list[Task])
+def list_owner_tasks(owner_id: int, session: SessionDep):
+    return session.exec(
+        select(Task).join(Pet).where(Pet.owner_id == owner_id)
+    ).all()

@@ -1,3 +1,7 @@
+from sqlmodel import select
+
+from models import Task
+
 def make_pet(client):
     owner = client.post("/owners", json={"name": "Alex"}).json()
     return client.post(
@@ -54,3 +58,25 @@ def test_list_and_delete_task(client):
     assert len(client.get(f"/pets/{pet['id']}/tasks").json()) == 1
     assert client.delete(f"/tasks/{task['id']}").status_code == 200
     assert client.get(f"/pets/{pet['id']}/tasks").json() == []
+
+def test_list_owner_tasks_spans_pets_and_excludes_other_owners(client):
+    owner_a = client.post("/owners", json={"name": "Alex"}).json()
+    owner_b = client.post("/owners", json={"name": "Sam"}).json()
+    pet1 = client.post(f"/owners/{owner_a['id']}/pets", json={"name": "Buddy", "species": "Dog", "age": 3}).json()
+    pet2 = client.post(f"/owners/{owner_a['id']}/pets", json={"name": "Whiskers", "species": "Cat", "age": 5}).json()
+    pet3 = client.post(f"/owners/{owner_b['id']}/pets", json={"name": "Rex", "species": "Dog", "age": 2}).json()
+
+    for pet in (pet1, pet2, pet3):
+        client.post(f"/pets/{pet['id']}/tasks", json=TASK)
+
+    tasks = client.get(f"/owners/{owner_a['id']}/tasks").json()
+    assert len(tasks) == 2
+
+
+def test_deleting_pet_deletes_its_tasks(client, session):
+    pet = make_pet(client)
+    client.post(f"/pets/{pet['id']}/tasks", json=TASK)
+
+    client.delete(f"/pets/{pet['id']}")
+
+    assert session.exec(select(Task)).all() == []
