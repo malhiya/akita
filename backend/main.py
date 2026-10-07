@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Session, create_engine, select
-
-from models import Owner, OwnerCreate, Pet, PetCreate, PetUpdate, Task, TaskCreate
-from recurrence import build_rrule
+from datetime import date
+from models import Owner, OwnerCreate, Pet, PetCreate, PetUpdate, Task, TaskCreate, Occurrence
+from recurrence import build_rrule, expand_occurrences
 
 DATABASE_URL = "sqlite:///akita.db"
 engine = create_engine(DATABASE_URL)
@@ -134,3 +134,31 @@ def list_owner_tasks(owner_id: int, session: SessionDep):
     return session.exec(
         select(Task).join(Pet).where(Pet.owner_id == owner_id)
     ).all()
+
+
+@app.get("/schedule", response_model=list[Occurrence])
+def get_schedule(
+    owner_id: int,
+    start: date,
+    end: date,
+    session: SessionDep,
+    pet_id: int | None = None,
+):
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must not be before start")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=422, detail="range cannot exceed one year")
+
+    query = select(Task, Pet).where(Task.pet_id == Pet.id, Pet.owner_id == owner_id)
+    if pet_id is not None:
+        query = query.where(Pet.id == pet_id)
+
+    occurrences = []
+    for task, pet in session.exec(query).all():
+        for day in expand_occurrences(task.rrule, task.start_date, task.end_date, start, end):
+            occurrences.append(Occurrence(
+                task_id=task.id, pet_id=pet.id, pet_name=pet.name, name=task.name,
+                category=task.category, priority=task.priority, occurs_on=day,
+                time=task.scheduled_time, duration_minutes=task.duration_minutes,
+            ))
+    return sorted(occurrences, key=lambda o: (o.occurs_on, o.time))

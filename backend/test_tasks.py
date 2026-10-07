@@ -80,3 +80,45 @@ def test_deleting_pet_deletes_its_tasks(client, session):
     client.delete(f"/pets/{pet['id']}")
 
     assert session.exec(select(Task)).all() == []
+
+
+def schedule(client, owner_id, start, end, **extra):
+    return client.get("/schedule", params={"owner_id": owner_id, "start": start, "end": end, **extra})
+
+
+def test_schedule_expands_daily_task(client):
+    pet = make_pet(client)
+    client.post(f"/pets/{pet['id']}/tasks", json=TASK)
+    response = schedule(client, pet["owner_id"], "2026-10-10", "2026-10-16")
+    assert response.status_code == 200
+    assert len(response.json()) == 7
+
+
+def test_schedule_pet_filter(client):
+    pet1 = make_pet(client)
+    pet2 = client.post(
+        f"/owners/{pet1['owner_id']}/pets",
+        json={"name": "Whiskers", "species": "Cat", "age": 5},
+    ).json()
+    client.post(f"/pets/{pet1['id']}/tasks", json=TASK)
+    client.post(f"/pets/{pet2['id']}/tasks", json=TASK)
+
+    both = schedule(client, pet1["owner_id"], "2026-10-10", "2026-10-10").json()
+    only_one = schedule(client, pet1["owner_id"], "2026-10-10", "2026-10-10", pet_id=pet2["id"]).json()
+    assert len(both) == 2
+    assert [o["pet_name"] for o in only_one] == ["Whiskers"]
+
+
+def test_schedule_excludes_other_owners(client):
+    pet = make_pet(client)
+    client.post(f"/pets/{pet['id']}/tasks", json=TASK)
+    other = client.post("/owners", json={"name": "Sam"}).json()
+    assert schedule(client, other["id"], "2026-10-10", "2026-10-16").json() == []
+
+
+def test_schedule_rejects_reversed_range(client):
+    assert schedule(client, 1, "2026-10-16", "2026-10-10").status_code == 422
+
+
+def test_schedule_rejects_huge_range(client):
+    assert schedule(client, 1, "2026-01-01", "2028-01-01").status_code == 422

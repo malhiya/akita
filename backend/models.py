@@ -93,3 +93,14 @@ class PetUpdate(SQLModel):
     age: int | None = None
     weight: float | None = None
     health_notes: str | None = None
+
+class Occurrence(SQLModel):
+    task_id: int
+    pet_id: int
+    pet_name: str
+    name: str
+    category: str
+    priority: str
+    occurs_on: date
+    time: str
+    duration_minutes: int
