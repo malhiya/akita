@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Calendar from "./Calendar";
 
 const API_BASE = "http://localhost:8000";
 
@@ -241,6 +242,9 @@ function App() {
           {taskError && <p>{taskError}</p>}
         </form>
       )}
+
+      <h2>Calendar</h2>
+      <Calendar ownerId={owner.id} />
     </div>
   );
 }
