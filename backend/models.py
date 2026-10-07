@@ -49,6 +49,12 @@ class TaskCreate(SQLModel):
             raise ValueError("end_date cannot be before start_date")
         return self
 
+    @model_validator(mode="after")
+    def check_weekly_has_day(self):
+        if self.frequency == "weekly" and not self.scheduled_day:
+            raise ValueError("scheduled_day is required when frequency is weekly")
+        return self
+
 class Owner(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int | None = Field(default=None)
