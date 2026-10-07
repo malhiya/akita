@@ -42,6 +42,7 @@ function App() {
   const [newTask, setNewTask] = useState(EMPTY_TASK);
   const [submitting, setSubmitting] = useState(false);
   const [taskError, setTaskError] = useState("");
+  const [calendarVersion, setCalendarVersion] = useState(0);
 
   useEffect(() => {
     async function loadOwner() {
@@ -107,6 +108,7 @@ function App() {
     if (selectedPetId === petId) setSelectedPetId(null);
     await fetchPets();
     fetchTasks();
+    setCalendarVersion((v) => v + 1);
   }
 
   async function handleAddTask(e) {
@@ -134,6 +136,7 @@ function App() {
         return;
       }
       setNewTask(EMPTY_TASK);
+      setCalendarVersion((v) => v + 1);
       fetchTasks();
     } finally {
       setSubmitting(false);
@@ -143,6 +146,7 @@ function App() {
   async function handleDeleteTask(taskId) {
     await fetch(`${API_BASE}/tasks/${taskId}`, { method: "DELETE" });
     fetchTasks();
+    setCalendarVersion((v) => v + 1);
   }
 
   function setTaskField(field, value) {
@@ -244,7 +248,7 @@ function App() {
       )}
 
       <h2>Calendar</h2>
-      <Calendar ownerId={owner.id} />
+      <Calendar ownerId={owner.id} petId={selectedPetId} version={calendarVersion} />
     </div>
   );
 }
