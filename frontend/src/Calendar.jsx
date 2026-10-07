@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { PRIORITY_STYLES } from "./priorities";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 const API_BASE = "http://localhost:8000";
 
 // Local YYYY-MM-DD (toISOString would shift the date into UTC)
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+// "2026-10-16" -> local midnight on Oct 16 (not UTC)
+const parseLocal = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
 
 function toEvent(o) {
   const s = PRIORITY_STYLES[o.priority];
@@ -25,25 +31,53 @@ function toEvent(o) {
   };
 }
 
-export default function Calendar({ ownerId, petId, version }) {
+const Calendar = forwardRef(function Calendar({ ownerId, petId, version }, ref) {
+  const calRef = useRef(null);
   const [events, setEvents] = useState([]);
-  const [range, setRange] = useState(null);
+  const [range, setRange] = useState(null);           // what's on screen
+  const [validRange, setValidRange] = useState(null); // locked window: { start, end } (end exclusive)
 
-  // Refetch whenever the visible range, pet filter, or task data changes
+  useImperativeHandle(ref, () => ({
+    showRange(start, end) {
+      setValidRange({ start, end });
+      const api = calRef.current.getApi();
+      const s = parseLocal(start);
+      const e = parseLocal(end);
+      const days = Math.round((e - s) / 86400000);
+      if (days <= 21) {
+        api.changeView("customRange", { start: s, end: e });
+      } else {
+        api.changeView("dayGridMonth", s);
+      }
+    },
+    clearRange() {
+      setValidRange(null);
+      calRef.current.getApi().changeView("timeGridWeek", new Date());
+    },
+  }));
+
+  // Refetch when the visible range, pet filter, task data, or locked range changes
   useEffect(() => {
     if (!range) return;
-    let cancelled = false;
 
+    // never fetch (or show) anything outside a locked range
+    const start = validRange && validRange.start > range.start ? validRange.start : range.start;
+    const end = validRange && validRange.end < range.end ? validRange.end : range.end;
+    if (start >= end) {
+      setEvents([]);
+      return;
+    }
+
+    let cancelled = false;
     async function load() {
-      const params = new URLSearchParams({ owner_id: ownerId, start: range.start, end: range.end });
+      const params = new URLSearchParams({ owner_id: ownerId, start, end });
       if (petId !== null) params.set("pet_id", petId);
       const res = await fetch(`${API_BASE}/schedule?${params}`);
       if (!cancelled && res.ok) setEvents((await res.json()).map(toEvent));
     }
-
     load();
     return () => { cancelled = true; };
-  }, [range, petId, version, ownerId]);
+  }, [range, petId, version, ownerId, validRange]);
 
   function handleDatesSet(info) {
     const start = ymd(info.start);
@@ -65,8 +99,12 @@ export default function Calendar({ ownerId, petId, version }) {
       </div>
 
       <FullCalendar
+        ref={calRef}
+        firstDay={1}
         plugins={[dayGridPlugin, timeGridPlugin]}
         initialView="timeGridWeek"
+        views={{ customRange: { type: "timeGrid" } }}
+        validRange={validRange ?? undefined}
         headerToolbar={{
           left: "prev,next today",
           center: "title",
@@ -78,4 +116,6 @@ export default function Calendar({ ownerId, petId, version }) {
       />
     </>
   );
-}
+});
+
+export default Calendar;

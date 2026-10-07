@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Calendar from "./Calendar";
 
 const API_BASE = "http://localhost:8000";
@@ -43,6 +43,9 @@ function App() {
   const [submitting, setSubmitting] = useState(false);
   const [taskError, setTaskError] = useState("");
   const [calendarVersion, setCalendarVersion] = useState(0);
+  const calendarRef = useRef(null);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
 
   useEffect(() => {
     async function loadOwner() {
@@ -157,6 +160,43 @@ function App() {
 
   const petName = (id) => pets.find((p) => p.id === id)?.name ?? "Unknown";
 
+  const iso = (d) => {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+};
+const parseLocal = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const addDays = (d, n) => {
+  const x = typeof d === "string" ? parseLocal(d) : new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+};
+
+function showPreset(kind) {
+  const today = new Date();
+  const monday = addDays(today, -((today.getDay() + 6) % 7));
+  if (kind === "week") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 7)));
+  if (kind === "two") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 14)));
+  if (kind === "month") {
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    calendarRef.current.showRange(iso(first), iso(next));
+  }
+  if (kind === "three") {
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    const later = new Date(today.getFullYear(), today.getMonth() + 3, 1);
+    calendarRef.current.showRange(iso(first), iso(later));
+  }
+}
+
+function showCustomRange() {
+  if (!rangeStart || !rangeEnd) return;
+  if (rangeEnd < rangeStart) return;
+  calendarRef.current.showRange(rangeStart, iso(addDays(rangeEnd, 1)));
+}
   return (
     <div>
       <h1>Welcome, {owner.name}</h1>
@@ -248,7 +288,21 @@ function App() {
       )}
 
       <h2>Calendar</h2>
-      <Calendar ownerId={owner.id} petId={selectedPetId} version={calendarVersion} />
+      <div>
+        <button onClick={() => showPreset("week")}>This week</button>
+        <button onClick={() => showPreset("two")}>Next 2 weeks</button>
+        <button onClick={() => showPreset("month")}>This month</button>
+        <button onClick={() => showPreset("three")}>Next 3 months</button>
+      </div>
+      <div>
+        <label>From <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></label>
+        <label>To <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></label>
+        <button onClick={showCustomRange} disabled={!rangeStart || !rangeEnd || rangeEnd < rangeStart}>
+          Show range
+        </button>
+        <button onClick={() => calendarRef.current.clearRange()}>Clear range</button>
+      </div>
+      <Calendar ref={calendarRef} ownerId={owner.id} petId={selectedPetId} version={calendarVersion} />
     </div>
   );
 }
