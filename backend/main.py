@@ -4,7 +4,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from models import Owner, OwnerCreate, Pet, PetCreate, PetUpdate
+from models import Owner, OwnerCreate, Pet, PetCreate, PetUpdate, Task, TaskCreate
+from recurrence import build_rrule
 
 DATABASE_URL = "sqlite:///akita.db"
 engine = create_engine(DATABASE_URL)
@@ -92,5 +93,34 @@ def delete_pet(pet_id: int, session: SessionDep):
     if not pet:
         raise HTTPException(status_code=404, detail="Pet not found")
     session.delete(pet)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/pets/{pet_id}/tasks", response_model=Task)
+def create_task(pet_id: int, task_in: TaskCreate, session: SessionDep):
+    pet = session.get(Pet, pet_id)
+    if not pet:
+        raise HTTPException(status_code=404, detail="Pet not found")
+
+    rrule = build_rrule(task_in.frequency, task_in.scheduled_day)
+    data = task_in.model_dump(exclude={"frequency", "scheduled_day"})
+    task = Task(**data, pet_id=pet_id, rrule=rrule)
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.get("/pets/{pet_id}/tasks", response_model=list[Task])
+def list_tasks(pet_id: int, session: SessionDep):
+    return session.exec(select(Task).where(Task.pet_id == pet_id)).all()
+
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, session: SessionDep):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    session.delete(task)
     session.commit()
     return {"ok": True}
