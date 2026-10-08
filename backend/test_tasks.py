@@ -122,3 +122,81 @@ def test_schedule_rejects_reversed_range(client):
 
 def test_schedule_rejects_huge_range(client):
     assert schedule(client, 1, "2026-01-01", "2028-01-01").status_code == 422
+
+
+def new_task(client, **overrides):
+    pet = make_pet(client)
+    return client.post(f"/pets/{pet['id']}/tasks", json={**TASK, **overrides}).json()
+
+
+def test_get_task_includes_frequency_and_day(client):
+    task = new_task(client, frequency="weekly", scheduled_day="Saturday")
+    data = client.get(f"/tasks/{task['id']}").json()
+    assert data["frequency"] == "weekly"
+    assert data["scheduled_day"] == "Saturday"
+    assert data["rrule"] == "RRULE:FREQ=WEEKLY;BYDAY=SA"
+
+
+def test_get_missing_task_returns_404(client):
+    assert client.get("/tasks/999").status_code == 404
+
+
+def test_patch_time_only(client):
+    task = new_task(client)
+    r = client.patch(f"/tasks/{task['id']}", json={"scheduled_time": "09:30"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["scheduled_time"] == "09:30"
+    assert data["name"] == "Morning walk"
+    assert data["rrule"] == "RRULE:FREQ=DAILY"
+
+
+def test_patch_weekly_day_rebuilds_rrule(client):
+    task = new_task(client, frequency="weekly", scheduled_day="Saturday")
+    r = client.patch(f"/tasks/{task['id']}", json={"scheduled_day": "Sunday"})
+    assert r.json()["rrule"] == "RRULE:FREQ=WEEKLY;BYDAY=SU"
+    assert r.json()["scheduled_day"] == "Sunday"
+
+
+def test_patch_daily_to_weekly_needs_a_day(client):
+    task = new_task(client)
+    assert client.patch(f"/tasks/{task['id']}", json={"frequency": "weekly"}).status_code == 422
+
+
+def test_patch_weekly_to_once_clears_rrule(client):
+    task = new_task(client, frequency="weekly", scheduled_day="Saturday")
+    r = client.patch(f"/tasks/{task['id']}", json={"frequency": "once"})
+    assert r.json()["rrule"] is None
+    assert r.json()["frequency"] == "once"
+
+
+def test_patch_changes_start_date(client):
+    task = new_task(client, frequency="once")
+    r = client.patch(f"/tasks/{task['id']}", json={"start_date": "2026-10-15"})
+    assert r.json()["start_date"] == "2026-10-15"
+
+
+def test_patch_bad_time_returns_422(client):
+    task = new_task(client)
+    assert client.patch(f"/tasks/{task['id']}", json={"scheduled_time": "25:00"}).status_code == 422
+
+
+def test_patch_end_before_start_returns_422(client):
+    task = new_task(client)
+    assert client.patch(f"/tasks/{task['id']}", json={"end_date": "2026-01-01"}).status_code == 422
+
+
+def test_patch_can_clear_end_date(client):
+    task = new_task(client, end_date="2026-12-31")
+    r = client.patch(f"/tasks/{task['id']}", json={"end_date": None})
+    assert r.status_code == 200
+    assert r.json()["end_date"] is None
+
+
+def test_patch_null_required_field_returns_422(client):
+    task = new_task(client)
+    assert client.patch(f"/tasks/{task['id']}", json={"start_date": None}).status_code == 422
+
+
+def test_patch_missing_task_returns_404(client):
+    assert client.patch("/tasks/999", json={"name": "x"}).status_code == 404

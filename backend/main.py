@@ -1,11 +1,21 @@
 from typing import Annotated
-
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Session, create_engine, select
 from datetime import date
-from models import Owner, OwnerCreate, Pet, PetCreate, PetUpdate, Task, TaskCreate, Occurrence
-from recurrence import build_rrule, expand_occurrences
+from models import (
+    Occurrence,
+    Owner,
+    OwnerCreate,
+    Pet,
+    PetCreate,
+    PetUpdate,
+    Task,
+    TaskCreate,
+    TaskRead,
+    TaskUpdate,
+)
+from recurrence import build_rrule, expand_occurrences, parse_rrule
 
 DATABASE_URL = "sqlite:///akita.db"
 engine = create_engine(DATABASE_URL)
@@ -162,3 +172,59 @@ def get_schedule(
                 time=task.scheduled_time, duration_minutes=task.duration_minutes,
             ))
     return sorted(occurrences, key=lambda o: (o.occurs_on, o.time))
+
+REQUIRED_ON_PATCH = ("name", "category", "priority", "duration_minutes", "scheduled_time", "start_date")
+
+
+def to_read(task: Task) -> TaskRead:
+    return TaskRead(**task.model_dump(), **parse_rrule(task.rrule))
+
+
+@app.get("/tasks/{task_id}", response_model=TaskRead)
+def get_task(task_id: int, session: SessionDep):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return to_read(task)
+
+
+@app.patch("/tasks/{task_id}", response_model=TaskRead)
+def update_task(task_id: int, task_in: TaskUpdate, session: SessionDep):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    changes = task_in.model_dump(exclude_unset=True)
+    frequency = changes.pop("frequency", None)
+    scheduled_day = changes.pop("scheduled_day", None)
+
+    # 1. Validate everything before touching the task
+    for field in REQUIRED_ON_PATCH:
+        if field in changes and changes[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
+
+    new_start = changes.get("start_date", task.start_date)
+    new_end = changes["end_date"] if "end_date" in changes else task.end_date
+    if new_end and new_end < new_start:
+        raise HTTPException(status_code=422, detail="end_date cannot be before start_date")
+
+    new_rrule = task.rrule
+    if frequency is not None or scheduled_day is not None:
+        current = parse_rrule(task.rrule)
+        try:
+            new_rrule = build_rrule(
+                frequency or current["frequency"],
+                scheduled_day or current["scheduled_day"],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+    # 2. Apply
+    for field, value in changes.items():
+        setattr(task, field, value)
+    task.rrule = new_rrule
+
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return to_read(task)

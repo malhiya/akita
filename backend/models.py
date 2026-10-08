@@ -104,3 +104,40 @@ class Occurrence(SQLModel):
     occurs_on: date
     time: str
     duration_minutes: int
+
+class TaskUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1)
+    category: Category | None = None
+    priority: Priority | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=240)
+    scheduled_time: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    frequency: Frequency | None = None
+    scheduled_day: str | None = None
+
+    @field_validator("scheduled_time")
+    @classmethod
+    def check_time(cls, v):  # same rule as TaskCreate
+        if v is None:
+            return v
+        hh, _, mm = v.partition(":")
+        if not (len(v) == 5 and hh.isdigit() and mm.isdigit()
+                and int(hh) <= 23 and int(mm) <= 59):
+            raise ValueError("scheduled_time must be 24-hour HH:MM, like 08:30")
+        return v
+
+
+class TaskRead(SQLModel):
+    id: int
+    pet_id: int
+    name: str
+    category: str
+    priority: str
+    duration_minutes: int
+    scheduled_time: str
+    start_date: date
+    end_date: date | None
+    rrule: str | None
+    frequency: str
+    scheduled_day: str | None
