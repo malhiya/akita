@@ -1,8 +1,14 @@
+import logging
+import re
+from typing import Literal
+
 from pydantic import BaseModel, ValidationError
 
 from groq_client import GROQ_MODEL
 from models import Category, Priority
+from retrieval import KEYWORDS, retrieve_rules
 
+logger = logging.getLogger(__name__)
 
 class TaskClassification(BaseModel):
     priority: Priority
@@ -53,6 +59,64 @@ def classify_with_groq(client, task_text, species, health_notes=None, rules=None
         raise ClassificationError(f"model returned an invalid answer: {e}") from e
     except Exception as e:
         raise ClassificationError(f"classification request failed: {e}") from e
+
+class ClassificationResult(BaseModel):
+    priority: Priority
+    category: Category
+    reason: str
+    source: Literal["ai", "keyword"]
+    notice: str | None = None
+
+
+# Order matters when a line matches several topics: medication beats feeding.
+KEYWORD_RULES = [
+    ("medication", "meds", "non-negotiable"),
+    ("vet", "vet", "non-negotiable"),
+    ("feeding", "feeding", "high"),
+    ("walk", "walk", "high"),
+    ("grooming", "grooming", "medium"),
+    ("training", "training", "low"),
+    ("play", "play", "low"),
+]
+
+
+def keyword_classify(task_text: str, health_notes: str | None = None) -> tuple[str, str, str]:
+    """No-AI classifier. Returns (category, priority, reason)."""
+    words = set(re.findall(r"[a-z]+", task_text.lower()))
+    for topic, category, priority in KEYWORD_RULES:
+        if words & KEYWORDS[topic]:
+            reason = f"Matched '{topic}' keywords."
+            if category == "feeding" and health_notes:
+                note_words = set(re.findall(r"[a-z]+", health_notes.lower()))
+                if note_words & KEYWORDS["health"]:
+                    priority = "non-negotiable"
+                    reason += " Health notes make feeding non-negotiable."
+            return category, priority, reason
+    return "general", "medium", "No keywords matched, so a default was used."
+
+
+def _fallback(task_text, health_notes, notice) -> ClassificationResult:
+    category, priority, reason = keyword_classify(task_text, health_notes)
+    return ClassificationResult(
+        priority=priority, category=category, reason=reason, source="keyword", notice=notice
+    )
+
+
+def classify_task(client, task_text, species, health_notes=None) -> ClassificationResult:
+    """The one function the rest of the app calls: AI first, keywords if the AI can't answer."""
+    if client is None:
+        return _fallback(task_text, health_notes, "AI classification isn't configured; used keyword matching.")
+
+    rules = retrieve_rules(task_text, health_notes)
+    try:
+        ai = classify_with_groq(client, task_text, species, health_notes, rules)
+        return ClassificationResult(**ai.model_dump(), source="ai")
+    except ClassificationError as e:
+        logger.warning("Groq classification failed, using keyword fallback: %s", e)
+        return _fallback(task_text, health_notes, "AI classification was unavailable; used keyword matching.")
+
+
+
 
 if __name__ == "__main__":
     from groq_client import get_client
