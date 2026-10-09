@@ -3,8 +3,8 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { PRIORITY_STYLES } from "./priorities";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE } from "./taskOptions";
+import TaskModal from "./TaskModal";
 
 // Local YYYY-MM-DD (toISOString would shift the date into UTC)
 const ymd = (d) =>
@@ -28,14 +28,16 @@ function toEvent(o) {
     backgroundColor: s.bg,
     borderColor: s.border,
     textColor: s.text,
+    extendedProps: { taskId: o.task_id, petName: o.pet_name, occursOn: o.occurs_on },
   };
 }
 
-const Calendar = forwardRef(function Calendar({ ownerId, petId, version }, ref) {
+const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChanged }, ref) {
   const calRef = useRef(null);
   const [events, setEvents] = useState([]);
   const [range, setRange] = useState(null);           // what's on screen
   const [validRange, setValidRange] = useState(null); // locked window: { start, end } (end exclusive)
+  const [selected, setSelected] = useState(null);     // event whose popup is open
 
   useImperativeHandle(ref, () => ({
     showRange(start, end) {
@@ -112,8 +114,17 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version }, ref) 
         }}
         events={events}
         datesSet={handleDatesSet}
+        eventClick={(info) => setSelected(info.event.extendedProps)}
         height="auto"
       />
+
+      {selected && (
+        <TaskModal
+          {...selected}
+          onClose={() => setSelected(null)}
+          onChanged={onChanged}
+        />
+      )}
     </>
   );
 });
