@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import Calendar from "./Calendar";
+import ParsePanel from "./ParsePanel";
 import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
+
 const EMPTY_TASK = {
   name: "",
   category: "walk",
@@ -13,12 +15,13 @@ const EMPTY_TASK = {
   scheduled_day: "Monday",
 };
 
+const EMPTY_PET = { name: "", species: "", age: "", health_notes: "" };
 
 function App() {
   const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pets, setPets] = useState([]);
-  const [newPet, setNewPet] = useState({ name: "", species: "", age: "" });
+  const [newPet, setNewPet] = useState(EMPTY_PET);
   const [selectedPetId, setSelectedPetId] = useState(null); // null = All Pets
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState(EMPTY_TASK);
@@ -82,9 +85,10 @@ function App() {
         name: newPet.name,
         species: newPet.species,
         age: parseInt(newPet.age),
+        health_notes: newPet.health_notes.trim() || null,
       }),
     });
-    setNewPet({ name: "", species: "", age: "" });
+    setNewPet(EMPTY_PET);
     fetchPets();
   }
 
@@ -143,42 +147,43 @@ function App() {
   const petName = (id) => pets.find((p) => p.id === id)?.name ?? "Unknown";
 
   const iso = (d) => {
-  const x = new Date(d);
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-};
-const parseLocal = (s) => {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
-};
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  };
+  const parseLocal = (s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
 
-const addDays = (d, n) => {
-  const x = typeof d === "string" ? parseLocal(d) : new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-};
+  const addDays = (d, n) => {
+    const x = typeof d === "string" ? parseLocal(d) : new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  };
 
-function showPreset(kind) {
-  const today = new Date();
-  const monday = addDays(today, -((today.getDay() + 6) % 7));
-  if (kind === "week") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 7)));
-  if (kind === "two") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 14)));
-  if (kind === "month") {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    calendarRef.current.showRange(iso(first), iso(next));
+  function showPreset(kind) {
+    const today = new Date();
+    const monday = addDays(today, -((today.getDay() + 6) % 7));
+    if (kind === "week") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 7)));
+    if (kind === "two") calendarRef.current.showRange(iso(monday), iso(addDays(monday, 14)));
+    if (kind === "month") {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      const next = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      calendarRef.current.showRange(iso(first), iso(next));
+    }
+    if (kind === "three") {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      const later = new Date(today.getFullYear(), today.getMonth() + 3, 1);
+      calendarRef.current.showRange(iso(first), iso(later));
+    }
   }
-  if (kind === "three") {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    const later = new Date(today.getFullYear(), today.getMonth() + 3, 1);
-    calendarRef.current.showRange(iso(first), iso(later));
-  }
-}
 
-function showCustomRange() {
-  if (!rangeStart || !rangeEnd) return;
-  if (rangeEnd < rangeStart) return;
-  calendarRef.current.showRange(rangeStart, iso(addDays(rangeEnd, 1)));
-}
+  function showCustomRange() {
+    if (!rangeStart || !rangeEnd) return;
+    if (rangeEnd < rangeStart) return;
+    calendarRef.current.showRange(rangeStart, iso(addDays(rangeEnd, 1)));
+  }
+
   return (
     <div>
       <h1>Welcome, {owner.name}</h1>
@@ -188,6 +193,7 @@ function showCustomRange() {
         {pets.map((pet) => (
           <li key={pet.id}>
             {pet.name} — {pet.species}, age {pet.age}
+            {pet.health_notes && ` · ${pet.health_notes}`}
             <button onClick={() => handleDeletePet(pet.id)}>Delete</button>
           </li>
         ))}
@@ -201,6 +207,8 @@ function showCustomRange() {
           onChange={(e) => setNewPet({ ...newPet, species: e.target.value })} />
         <input placeholder="Age" type="number" value={newPet.age}
           onChange={(e) => setNewPet({ ...newPet, age: e.target.value })} />
+        <input placeholder="Health notes (e.g. diabetic)" value={newPet.health_notes}
+          onChange={(e) => setNewPet({ ...newPet, health_notes: e.target.value })} />
         <button type="submit">Add Pet</button>
       </form>
 
@@ -230,6 +238,14 @@ function showCustomRange() {
           </li>
         ))}
       </ul>
+
+      <h3>Add tasks from text</h3>
+      <ParsePanel
+        ownerId={owner.id}
+        pets={pets}
+        selectedPetId={selectedPetId}
+        onSaved={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+      />
 
       <h3>Add a Task</h3>
       {selectedPetId === null ? (
@@ -284,14 +300,14 @@ function showCustomRange() {
         </button>
         <button onClick={() => calendarRef.current.clearRange()}>Clear range</button>
       </div>
-        <Calendar
-          ref={calendarRef}
-          ownerId={owner.id}
-          petId={selectedPetId}
-          version={calendarVersion}
-          onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
-        />   
-      </div>
+      <Calendar
+        ref={calendarRef}
+        ownerId={owner.id}
+        petId={selectedPetId}
+        version={calendarVersion}
+        onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+      />
+    </div>
   );
 }
 
