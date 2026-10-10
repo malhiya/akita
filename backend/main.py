@@ -16,6 +16,13 @@ from models import (
     TaskUpdate,
 )
 from recurrence import build_rrule, expand_occurrences, parse_rrule
+import logging
+from typing import Any
+
+from groq_client import get_client
+from parse_service import ParseRequest, ParseResponse, parse_lines
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = "sqlite:///akita.db"
 engine = create_engine(DATABASE_URL)
@@ -27,6 +34,17 @@ def get_session():
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+def get_ai_client():
+    """None means 'no AI': a missing key or any setup failure falls back to keywords."""
+    try:
+        return get_client()
+    except Exception as e:
+        logger.warning("Groq client unavailable, using keyword fallback: %s", e)
+        return None
+
+
+AiClientDep = Annotated[Any, Depends(get_ai_client)]
 
 app = FastAPI()
 
@@ -228,3 +246,13 @@ def update_task(task_id: int, task_in: TaskUpdate, session: SessionDep):
     session.commit()
     session.refresh(task)
     return to_read(task)
+
+
+@app.post("/parse", response_model=ParseResponse)
+def parse_tasks(req: ParseRequest, session: SessionDep, client: AiClientDep):
+    if not session.get(Owner, req.owner_id):
+        raise HTTPException(status_code=404, detail="Owner not found")
+    pets = session.exec(select(Pet).where(Pet.owner_id == req.owner_id)).all()
+    if req.pet_id is not None and req.pet_id not in {p.id for p in pets}:
+        raise HTTPException(status_code=404, detail="Pet not found")
+    return parse_lines(client, pets, req.text, req.pet_id, req.today or date.today())
