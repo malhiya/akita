@@ -6,7 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from groq_client import GROQ_MODEL
 from models import Category, Priority
-from retrieval import KEYWORDS, retrieve_rules
+from retrieval import KEYWORDS, RetrievedRule, retrieve_rules
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,11 @@ Respond with a single JSON object and nothing else:
 
 
 def build_messages(task_text, species, health_notes, rules):
-    rules_block = "\n".join(rules) if rules else "(no matching rules)"
+    rules_block = (
+        "\n".join(f"Rule {i} ({r.source}): {r.text}" for i, r in enumerate(rules, 1))
+        if rules
+        else "(no matching rules)"
+    )
     user = (
         f"Rules:\n{rules_block}\n\n"
         f"Pet species: {species}\n"
@@ -66,6 +70,7 @@ class ClassificationResult(BaseModel):
     reason: str
     source: Literal["ai", "keyword"]
     notice: str | None = None
+    retrieved: list[RetrievedRule] = []
 
 
 # Order matters when a line matches several topics: medication beats feeding.
@@ -110,7 +115,7 @@ def classify_task(client, task_text, species, health_notes=None) -> Classificati
     rules = retrieve_rules(task_text, health_notes)
     try:
         ai = classify_with_groq(client, task_text, species, health_notes, rules)
-        return ClassificationResult(**ai.model_dump(), source="ai")
+        return ClassificationResult(**ai.model_dump(), source="ai", retrieved=rules)
     except ClassificationError as e:
         logger.warning("Groq classification failed, using keyword fallback: %s", e)
         return _fallback(task_text, health_notes, "AI classification was unavailable; used keyword matching.")

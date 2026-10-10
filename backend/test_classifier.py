@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from classifier import ClassificationError, classify_with_groq
+from retrieval import RetrievedRule
 
 
 class FakeClient:
@@ -51,12 +52,13 @@ def test_prompt_contains_rules_species_and_health_notes():
     classify_with_groq(
         client, "feed Max", "Dog",
         health_notes="diabetic",
-        rules=["[feeding] Feeding is high priority."],
+        rules=[RetrievedRule(text="[feeding] Feeding is high priority.", source="general guidelines")],
     )
     prompt = " ".join(m["content"] for m in client.kwargs["messages"])
     assert "[feeding] Feeding is high priority." in prompt
     assert "Dog" in prompt
     assert "diabetic" in prompt
+    assert "Rule 1 (general guidelines): [feeding]" in prompt
 
 
 def test_json_mode_is_requested():

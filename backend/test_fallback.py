@@ -63,3 +63,12 @@ def test_invalid_ai_output_falls_back():
 def test_missing_client_falls_back():
     result = classify_task(None, "give meds", "Dog")
     assert result.source == "keyword" and result.notice
+
+def test_ai_result_records_retrieved_rules():
+    result = classify_task(FakeClient(GOOD), "give Luna her meds", "Dog")
+    assert result.retrieved and result.retrieved[0].source == "general guidelines"
+
+
+def test_fallback_result_has_no_retrieved_rules():
+    result = classify_task(None, "give meds", "Dog")
+    assert result.retrieved == []

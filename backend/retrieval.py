@@ -1,7 +1,10 @@
 import re
 from pathlib import Path
 
+from pydantic import BaseModel
+
 KB_PATH = Path(__file__).parent / "knowledge_base.md"
+KB_SOURCE = "general guidelines"
 
 KEYWORDS = {
     "medication": {"med", "meds", "medication", "pill", "pills", "dose", "drops", "supplement"},
@@ -16,11 +19,17 @@ KEYWORDS = {
 }
 
 
+class RetrievedRule(BaseModel):
+    text: str
+    source: str
+    location: str | None = None  # e.g. "p.2" once documents exist
+
+
 def load_rules() -> list[str]:
     return [line.strip() for line in KB_PATH.read_text().splitlines() if line.strip()]
 
 
-def retrieve_rules(task_text: str, health_notes: str | None = None) -> list[str]:
+def retrieve_rules(task_text: str, health_notes: str | None = None) -> list[RetrievedRule]:
     words = set(re.findall(r"[a-z]+", task_text.lower()))
     topics = {t for t, kws in KEYWORDS.items() if words & kws}
 
@@ -29,4 +38,5 @@ def retrieve_rules(task_text: str, health_notes: str | None = None) -> list[str]
         if note_words & KEYWORDS["health"]:
             topics.add("health")
 
-    return [r for r in load_rules() if any(r.startswith(f"[{t}]") for t in topics)]
+    matched = [r for r in load_rules() if any(r.startswith(f"[{t}]") for t in topics)]
+    return [RetrievedRule(text=line, source=KB_SOURCE) for line in matched]
