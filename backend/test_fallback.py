@@ -72,3 +72,13 @@ def test_ai_result_records_retrieved_rules():
 def test_fallback_result_has_no_retrieved_rules():
     result = classify_task(None, "give meds", "Dog")
     assert result.retrieved == []
+
+def test_unrecognized_task_is_never_ranked_low():
+    low_general = '{"priority": "low", "category": "general", "reason": "No rule applies."}'
+    result = classify_task(FakeClient(low_general), "do the morning thing", "Dog")
+    assert result.priority == "medium" and result.source == "ai"
+
+
+def test_real_low_priority_is_untouched():
+    low_play = '{"priority": "low", "category": "play", "reason": "Play is low priority."}'
+    assert classify_task(FakeClient(low_play), "play fetch", "Dog").priority == "low"

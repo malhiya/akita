@@ -115,12 +115,15 @@ def classify_task(client, task_text, species, health_notes=None) -> Classificati
     rules = retrieve_rules(task_text, health_notes)
     try:
         ai = classify_with_groq(client, task_text, species, health_notes, rules)
-        return ClassificationResult(**ai.model_dump(), source="ai", retrieved=rules)
     except ClassificationError as e:
         logger.warning("Groq classification failed, using keyword fallback: %s", e)
         return _fallback(task_text, health_notes, "AI classification was unavailable; used keyword matching.")
 
-
+    result = ClassificationResult(**ai.model_dump(), source="ai", retrieved=rules)
+    if result.category == "general" and result.priority == "low":
+        result.priority = "medium"
+        result.reason += " (Unrecognized tasks are kept at medium so they aren't dropped.)"
+    return result
 
 
 if __name__ == "__main__":
