@@ -20,6 +20,15 @@ class CountingClient(FakeClient):
         self.calls += 1
         return super()._create(**kwargs)
 
+class RecordingClient(FakeClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.prompts = []
+
+    def _create(self, **kwargs):
+        self.prompts.append(" ".join(m["content"] for m in kwargs["messages"]))
+        return super()._create(**kwargs)
+
 
 def test_each_nonblank_line_becomes_a_draft():
     result = parse_lines(None, PETS, "give Luna her meds at 8am\n\nwalk Max every morning\n", None, TODAY)
@@ -42,10 +51,38 @@ def test_unknown_pet_is_flagged():
     assert draft.pet_id is None and draft.needs_pet
 
 
-def test_two_pet_names_in_one_line_is_ambiguous():
+def test_line_naming_two_pets_becomes_one_draft_per_pet():
     result = parse_lines(None, PETS, "walk Luna and Max", 3, TODAY)
-    assert result.drafts[0].needs_pet
+    assert [d.pet_id for d in result.drafts] == [1, 2]
+    assert not any(d.needs_pet for d in result.drafts)
     assert result.warnings
+
+
+def test_each_pet_in_a_shared_line_gets_its_own_health_notes():
+    client = RecordingClient(GOOD)
+    parse_lines(client, PETS, "feed Luna and Max dinner", None, TODAY)
+    assert len(client.prompts) == 2
+    assert "Pet health notes: none" in client.prompts[0]        # Luna
+    assert "Pet health notes: diabetic" in client.prompts[1]    # Max
+
+
+def test_split_drafts_share_a_group_id():
+    drafts = parse_lines(None, PETS, "walk Luna and Max", None, TODAY).drafts
+    assert drafts[0].group_id and drafts[0].group_id == drafts[1].group_id
+
+
+def test_single_pet_lines_have_no_group_id():
+    drafts = parse_lines(None, PETS, "walk Luna\nbrush coat", 3, TODAY).drafts
+    assert all(d.group_id is None for d in drafts)
+
+
+def test_each_split_line_gets_its_own_group_id():
+    text = "walk Luna and Max\nfeed Luna and Max"
+    drafts = parse_lines(None, PETS, text, None, TODAY).drafts
+    assert len(drafts) == 4
+    assert drafts[0].group_id == drafts[1].group_id
+    assert drafts[2].group_id == drafts[3].group_id
+    assert drafts[0].group_id != drafts[2].group_id
 
 
 def test_pet_names_match_whole_words_only():

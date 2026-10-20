@@ -70,3 +70,26 @@ def test_a_draft_can_be_saved_through_the_existing_task_route(client):
               "scheduled_time", "start_date", "frequency", "scheduled_day")
     saved = client.post(f"/pets/{draft['pet_id']}/tasks", json={k: draft[k] for k in fields})
     assert saved.status_code == 200, saved.text
+
+
+def test_split_line_drafts_save_with_a_shared_group_id(client):
+    owner_id = make_owner(client)
+    make_pet(client, owner_id, "Luna")
+    make_pet(client, owner_id, "Max")
+    resp = client.post("/parse", json={
+        "owner_id": owner_id, "text": "walk Luna and Max every morning", "today": TODAY,
+    })
+    drafts = resp.json()["drafts"]
+    assert len(drafts) == 2
+    assert drafts[0]["group_id"] and drafts[0]["group_id"] == drafts[1]["group_id"]
+
+    fields = ("name", "category", "priority", "duration_minutes", "scheduled_time",
+              "start_date", "frequency", "scheduled_day", "group_id")
+    ids = []
+    for d in drafts:
+        saved = client.post(f"/pets/{d['pet_id']}/tasks", json={k: d[k] for k in fields})
+        assert saved.status_code == 200, saved.text
+        ids.append(saved.json()["id"])
+
+    groups = {client.get(f"/tasks/{i}").json()["group_id"] for i in ids}
+    assert groups == {drafts[0]["group_id"]}

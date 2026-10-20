@@ -21,6 +21,7 @@ class Task(SQLModel, table=True):
     end_date: date | None = Field(default=None)
     rrule: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    group_id: str | None = None
 
 
 class TaskCreate(SQLModel):
@@ -33,6 +34,7 @@ class TaskCreate(SQLModel):
     end_date: date | None = None
     frequency: Frequency
     scheduled_day: str | None = None
+    group_id: str | None = None
 
     @field_validator("scheduled_time")
     @classmethod
@@ -141,3 +143,4 @@ class TaskRead(SQLModel):
     rrule: str | None
     frequency: str
     scheduled_day: str | None
+    group_id: str | None = None

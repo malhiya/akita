@@ -1,6 +1,7 @@
 import re
 from datetime import date
 from typing import Literal
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +11,8 @@ from retrieval import RetrievedRule
 from task_parser import fill_defaults, parse_details
 
 MAX_LINES = 20
+MAX_DRAFTS = 30
+
 
 
 class ParseRequest(BaseModel):
@@ -40,6 +43,7 @@ class TaskDraft(BaseModel):
     assumed: list[str]
     source: Literal["text"] = "text"   # "document" if file import is ever added
     citation: str | None = None
+    group_id: str | None = None  # shared by drafts split from one line
 
 
 class ParseResponse(BaseModel):
@@ -69,44 +73,53 @@ def parse_lines(client, pets, text: str, selected_pet_id: int | None, today: dat
 
     for line in lines:
         named = _pets_named_in(line, pets)
-        pet = None
-        if len(named) == 1:
-            pet = named[0]
-        elif len(named) > 1:
-            warnings.append(f'"{line}" mentions several pets; choose one.')
-        elif selected_pet_id is not None:
-            pet = by_id.get(selected_pet_id)
+        group_id = None
+        if named:
+            targets = named
+            if len(named) > 1:
+                group_id = uuid.uuid4().hex
+                warnings.append(f'"{line}" names several pets, so it was split into one task per pet.')
+        elif selected_pet_id in by_id:
+            targets = [by_id[selected_pet_id]]
+        else:
+            targets = [None]
 
-        result = classify_task(
-            None if ai_notice else client,
-            line,
-            pet.species if pet else "unknown",
-            pet.health_notes if pet else None,
-        )
-        if ai_notice:
-            result.notice = ai_notice
-        elif client is not None and result.source == "keyword":
-            ai_notice = result.notice
+        for pet in targets:
+            if len(drafts) >= MAX_DRAFTS:
+                warnings.append(f"Stopped at {MAX_DRAFTS} tasks.")
+                return ParseResponse(drafts=drafts, warnings=warnings)
 
-        details = fill_defaults(parse_details(line, today), result.category, today)
-        drafts.append(TaskDraft(
-            line=line,
-            name=line[:100],
-            pet_id=pet.id if pet else None,
-            pet_name=pet.name if pet else None,
-            needs_pet=pet is None,
-            category=result.category,
-            priority=result.priority,
-            reason=result.reason,
-            classification_source=result.source,
-            notice=result.notice,
-            rules_consulted=result.retrieved,
-            duration_minutes=details.duration_minutes,
-            scheduled_time=details.scheduled_time,
-            frequency=details.frequency,
-            scheduled_day=details.scheduled_day,
-            start_date=details.start_date,
-            assumed=details.assumed,
-        ))
+            result = classify_task(
+                None if ai_notice else client,
+                line,
+                pet.species if pet else "unknown",
+                pet.health_notes if pet else None,
+            )
+            if ai_notice:
+                result.notice = ai_notice
+            elif client is not None and result.source == "keyword":
+                ai_notice = result.notice
+
+            details = fill_defaults(parse_details(line, today), result.category, today)
+            drafts.append(TaskDraft(
+                line=line,
+                name=line[:100],
+                pet_id=pet.id if pet else None,
+                pet_name=pet.name if pet else None,
+                needs_pet=pet is None,
+                category=result.category,
+                priority=result.priority,
+                reason=result.reason,
+                classification_source=result.source,
+                notice=result.notice,
+                rules_consulted=result.retrieved,
+                duration_minutes=details.duration_minutes,
+                scheduled_time=details.scheduled_time,
+                frequency=details.frequency,
+                scheduled_day=details.scheduled_day,
+                start_date=details.start_date,
+                assumed=details.assumed,
+                group_id=group_id,
+            ))
 
     return ParseResponse(drafts=drafts, warnings=warnings)
