@@ -141,6 +141,7 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
             end_date: null,
             frequency: d.frequency,
             scheduled_day: d.frequency === "weekly" ? d.scheduled_day : null,
+            group_id: d.group_id ?? null,
           }),
         });
         if (res.ok) saved++;
