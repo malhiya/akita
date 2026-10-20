@@ -24,12 +24,20 @@ function prettyDate(s) {
   });
 }
 
-export default function TaskModal({ taskId, petName, occursOn, onClose, onChanged }) {
+export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn, onClose, onChanged }) {
   const [task, setTask] = useState(null);
   const [mode, setMode] = useState("view");
   const [form, setForm] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // A merged event carries one task per pet; "scope" picks which ones an edit or delete touches.
+  const ids = taskIds?.length ? taskIds : [taskId];
+  const names = petNames?.length ? petNames : [petName];
+  const grouped = ids.length > 1;
+  const [scope, setScope] = useState("all");   // "all" | "one"
+  const [onePet, setOnePet] = useState(0);     // index into ids/names when scope is "one"
+  const targetIds = grouped && scope === "one" ? [ids[onePet]] : ids;
 
   useEffect(() => {
     let cancelled = false;
@@ -64,44 +72,78 @@ export default function TaskModal({ taskId, petName, occursOn, onClose, onChange
     e.preventDefault();
     setSaving(true);
     setError("");
+    const body = JSON.stringify({
+      name: form.name,
+      category: form.category,
+      priority: form.priority,
+      duration_minutes: parseInt(form.duration_minutes),
+      scheduled_time: form.scheduled_time,
+      start_date: form.start_date,
+      end_date: form.end_date || null,
+      frequency: form.frequency,
+      scheduled_day: form.frequency === "weekly" ? form.scheduled_day : null,
+    });
     try {
-      const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          category: form.category,
-          priority: form.priority,
-          duration_minutes: parseInt(form.duration_minutes),
-          scheduled_time: form.scheduled_time,
-          start_date: form.start_date,
-          end_date: form.end_date || null,
-          frequency: form.frequency,
-          scheduled_day: form.frequency === "weekly" ? form.scheduled_day : null,
-        }),
-      });
-      if (!res.ok) {
-        setError(formatError(await res.json()));
+      const saved = [];
+      for (const id of targetIds) {
+        const res = await fetch(`${API_BASE}/tasks/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        if (!res.ok) {
+          setError(formatError(await res.json()));
+          if (saved.length) onChanged?.();   // some pets did change
+          return;
+        }
+        saved.push(await res.json());
+      }
+      onChanged?.();
+      if (grouped) {
+        onClose();   // the event may have split or changed; reopen it to see the result
         return;
       }
-      setTask(await res.json());
+      setTask(saved[0]);
       setMode("view");
-      onChanged?.();
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete() {
-    if (!window.confirm("Delete this task and all of its occurrences?")) return;
-    const res = await fetch(`${API_BASE}/tasks/${taskId}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError("Couldn't delete this task.");
-      return;
+    const who = grouped && scope === "one" ? names[onePet] : grouped ? "all these pets" : null;
+    const msg = who
+      ? `Delete this task for ${who}, with all of its occurrences?`
+      : "Delete this task and all of its occurrences?";
+    if (!window.confirm(msg)) return;
+    for (const id of targetIds) {
+      const res = await fetch(`${API_BASE}/tasks/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError("Couldn't delete this task.");
+        onChanged?.();
+        return;
+      }
     }
     onChanged?.();
     onClose();
   }
+
+  const scopePicker = grouped && (
+    <fieldset style={{ margin: "0.6rem 0", padding: "0.4rem 0.7rem" }}>
+      <legend>Applies to</legend>
+      <label style={{ display: "block" }}>
+        <input type="radio" checked={scope === "all"} onChange={() => setScope("all")} />{" "}
+        All pets ({petName})
+      </label>
+      <label style={{ display: "block" }}>
+        <input type="radio" checked={scope === "one"} onChange={() => setScope("one")} />{" "}
+        Just{" "}
+        <select value={onePet} onChange={(e) => { setOnePet(Number(e.target.value)); setScope("one"); }}>
+          {names.map((n, i) => <option key={ids[i]} value={i}>{n}</option>)}
+        </select>
+      </label>
+    </fieldset>
+  );
 
   const backdrop = {
     position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000,
@@ -142,6 +184,7 @@ export default function TaskModal({ taskId, petName, occursOn, onClose, onChange
             <p><strong>Starts:</strong> {prettyDate(task.start_date)}</p>
             <p><strong>Ends:</strong> {task.end_date ? prettyDate(task.end_date) : "No end date"}</p>
             <p style={{ color: "#555" }}>You clicked the occurrence on {prettyDate(occursOn)}.</p>
+            {scopePicker}
             {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
             <button onClick={startEdit}>Edit</button>{" "}
             <button onClick={handleDelete}>Delete</button>{" "}
@@ -196,6 +239,7 @@ export default function TaskModal({ taskId, petName, occursOn, onClose, onChange
                 </select>
               </label>
             )}
+            {scopePicker}
             {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
             <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save"}</button>{" "}
             <button type="button" onClick={() => { setMode("view"); setError(""); }}>Cancel</button>

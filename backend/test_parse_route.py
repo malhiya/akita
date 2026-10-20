@@ -93,3 +93,38 @@ def test_split_line_drafts_save_with_a_shared_group_id(client):
 
     groups = {client.get(f"/tasks/{i}").json()["group_id"] for i in ids}
     assert groups == {drafts[0]["group_id"]}
+
+def test_schedule_merges_grouped_tasks_into_one_event(client):
+    owner_id = make_owner(client)
+    luna = make_pet(client, owner_id, "Luna")
+    max_id = make_pet(client, owner_id, "Max")
+    body = {
+        "name": "walk", "category": "walk", "priority": "high",
+        "duration_minutes": 30, "scheduled_time": "08:00",
+        "start_date": TODAY, "frequency": "once", "group_id": "g1",
+    }
+    for pet_id in (luna, max_id):
+        resp = client.post(f"/pets/{pet_id}/tasks", json=body)
+        assert resp.status_code == 200, resp.text
+
+    # an unrelated, ungrouped task at the same time must stay separate
+    solo = {**body, "name": "brush teeth", "group_id": None}
+    resp = client.post(f"/pets/{luna}/tasks", json=solo)
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get("/schedule", params={"owner_id": owner_id, "start": TODAY, "end": "2026-10-10"})
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) == 2
+
+    walk = next(e for e in events if e["name"] == "walk")
+    assert walk["pet_names"] == ["Luna", "Max"]
+    assert walk["pet_name"] == "Luna & Max"
+    assert len(walk["task_ids"]) == 2
+
+    # filtering to one pet shows just that pet's half
+    one = client.get("/schedule", params={
+        "owner_id": owner_id, "start": TODAY, "end": "2026-10-10", "pet_id": max_id,
+    }).json()
+    walk_one = next(e for e in one if e["name"] == "walk")
+    assert walk_one["pet_names"] == ["Max"]

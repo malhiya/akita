@@ -20,15 +20,21 @@ function toEvent(o) {
   const s = PRIORITY_STYLES[o.priority];
   const start = new Date(`${o.occurs_on}T${o.time}:00`);
   const end = new Date(start.getTime() + o.duration_minutes * 60000);
-  return {
-    id: `${o.task_id}-${o.occurs_on}`,
+    return {
+    id: `${o.task_ids?.[0] ?? o.task_id}-${o.occurs_on}`,
     title: `${s.marker} ${o.pet_name}: ${o.name}`,
     start,
     end,
     backgroundColor: s.bg,
     borderColor: s.border,
     textColor: s.text,
-    extendedProps: { taskId: o.task_id, petName: o.pet_name, occursOn: o.occurs_on },
+    extendedProps: {
+      taskId: o.task_id,
+      taskIds: o.task_ids ?? [o.task_id],
+      petName: o.pet_name,
+      petNames: o.pet_names ?? [o.pet_name],
+      occursOn: o.occurs_on,
+    },
   };
 }
 
