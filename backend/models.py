@@ -106,6 +106,26 @@ class Occurrence(SQLModel):
     occurs_on: date
     time: str
     duration_minutes: int
+    group_id: str | None = None
+    pet_names: list[str] = []
+    task_ids: list[int] = []
+
+
+class Conflict(SQLModel):
+    kind: Literal["identical", "duplicate", "overlap"]
+    a: Occurrence
+    b: Occurrence
+    overlap_minutes: int
+    dates: list[date]
+
+
+class LinkRequest(SQLModel):
+    task_ids: list[int]
+
+
+class LinkResponse(SQLModel):
+    group_id: str
+    task_ids: list[int]
 
 class TaskUpdate(SQLModel):
     name: str | None = Field(default=None, min_length=1)

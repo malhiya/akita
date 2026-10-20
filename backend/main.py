@@ -1,9 +1,19 @@
-from typing import Annotated
+import logging
+import uuid
+from datetime import date
+from typing import Annotated, Any
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import SQLModel, Session, create_engine, select
-from datetime import date
+from sqlmodel import SQLModel, Session, col, create_engine, select
+
+from conflicts import detect_conflicts
+from group_merge import merge_grouped
+from groq_client import get_client
 from models import (
+    Conflict,
+    LinkRequest,
+    LinkResponse,
     Occurrence,
     Owner,
     OwnerCreate,
@@ -15,12 +25,8 @@ from models import (
     TaskRead,
     TaskUpdate,
 )
-from recurrence import build_rrule, expand_occurrences, parse_rrule
-import logging
-from typing import Any
-
-from groq_client import get_client
 from parse_service import ParseRequest, ParseResponse, parse_lines
+from recurrence import build_rrule, expand_occurrences, parse_rrule
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,7 @@ def get_session():
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
 
 def get_ai_client():
     """None means 'no AI': a missing key or any setup failure falls back to keywords."""
@@ -164,6 +171,35 @@ def list_owner_tasks(owner_id: int, session: SessionDep):
     ).all()
 
 
+def check_range(start: date, end: date) -> None:
+    if end < start:
+        raise HTTPException(status_code=422, detail="end must not be before start")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=422, detail="range cannot exceed one year")
+
+
+def collect_occurrences(
+    session: Session, owner_id: int, start: date, end: date, pet_id: int | None = None
+) -> tuple[list[Occurrence], dict[int, Task]]:
+    """Every occurrence in the range, one per task (NOT merged), plus the tasks by id."""
+    query = select(Task, Pet).where(Task.pet_id == Pet.id, Pet.owner_id == owner_id)
+    if pet_id is not None:
+        query = query.where(Pet.id == pet_id)
+
+    occurrences: list[Occurrence] = []
+    tasks: dict[int, Task] = {}
+    for task, pet in session.exec(query).all():
+        tasks[task.id] = task
+        for day in expand_occurrences(task.rrule, task.start_date, task.end_date, start, end):
+            occurrences.append(Occurrence(
+                task_id=task.id, pet_id=pet.id, pet_name=pet.name, name=task.name,
+                category=task.category, priority=task.priority, occurs_on=day,
+                time=task.scheduled_time, duration_minutes=task.duration_minutes,
+                group_id=task.group_id,
+            ))
+    return sorted(occurrences, key=lambda o: (o.occurs_on, o.time)), tasks
+
+
 @app.get("/schedule", response_model=list[Occurrence])
 def get_schedule(
     owner_id: int,
@@ -172,24 +208,47 @@ def get_schedule(
     session: SessionDep,
     pet_id: int | None = None,
 ):
-    if end < start:
-        raise HTTPException(status_code=422, detail="end must not be before start")
-    if (end - start).days > 366:
-        raise HTTPException(status_code=422, detail="range cannot exceed one year")
+    check_range(start, end)
+    occurrences, _ = collect_occurrences(session, owner_id, start, end, pet_id)
+    return merge_grouped(occurrences)
 
-    query = select(Task, Pet).where(Task.pet_id == Pet.id, Pet.owner_id == owner_id)
-    if pet_id is not None:
-        query = query.where(Pet.id == pet_id)
 
-    occurrences = []
-    for task, pet in session.exec(query).all():
-        for day in expand_occurrences(task.rrule, task.start_date, task.end_date, start, end):
-            occurrences.append(Occurrence(
-                task_id=task.id, pet_id=pet.id, pet_name=pet.name, name=task.name,
-                category=task.category, priority=task.priority, occurs_on=day,
-                time=task.scheduled_time, duration_minutes=task.duration_minutes,
-            ))
-    return sorted(occurrences, key=lambda o: (o.occurs_on, o.time))
+@app.get("/conflicts", response_model=list[Conflict])
+def get_conflicts(owner_id: int, start: date, end: date, session: SessionDep):
+    check_range(start, end)
+    occurrences, tasks = collect_occurrences(session, owner_id, start, end)
+    return detect_conflicts(merge_grouped(occurrences), tasks)
+
+
+@app.post("/tasks/link", response_model=LinkResponse)
+def link_tasks(req: LinkRequest, session: SessionDep):
+    """Give several tasks one shared group_id so they show as one calendar event."""
+    ids = list(dict.fromkeys(req.task_ids))
+    if len(ids) < 2:
+        raise HTTPException(status_code=422, detail="need at least two different tasks to link")
+
+    tasks = [session.get(Task, i) for i in ids]
+    if any(t is None for t in tasks):
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    owners = {session.get(Pet, t.pet_id).owner_id for t in tasks}
+    if len(owners) != 1:
+        raise HTTPException(status_code=422, detail="tasks belong to different owners")
+
+    existing = sorted({t.group_id for t in tasks if t.group_id})
+    group_id = existing[0] if existing else uuid.uuid4().hex
+
+    to_update = {t.id: t for t in tasks}
+    if existing:  # joining groups: everyone already in them comes along
+        for t in session.exec(select(Task).where(col(Task.group_id).in_(existing))).all():
+            to_update[t.id] = t
+
+    for t in to_update.values():
+        t.group_id = group_id
+        session.add(t)
+    session.commit()
+    return LinkResponse(group_id=group_id, task_ids=sorted(to_update))
+
 
 REQUIRED_ON_PATCH = ("name", "category", "priority", "duration_minutes", "scheduled_time", "start_date")
 
