@@ -28,11 +28,12 @@ function toEvent(o) {
     backgroundColor: s.bg,
     borderColor: s.border,
     textColor: s.text,
-    extendedProps: {
+        extendedProps: {
       taskId: o.task_id,
       taskIds: o.task_ids ?? [o.task_id],
       petName: o.pet_name,
       petNames: o.pet_names ?? [o.pet_name],
+      eventName: o.name,
       occursOn: o.occurs_on,
     },
   };
@@ -127,6 +128,7 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
       {selected && (
         <TaskModal
           {...selected}
+          ownerId={ownerId}
           onClose={() => setSelected(null)}
           onChanged={onChanged}
         />

@@ -67,3 +67,38 @@ def test_single_pet_group_survives_a_pet_filter():
     # when the calendar is filtered to one pet, only one half of the group comes back
     out = merge_grouped([occ(2, "Max", "g1")])
     assert out[0].pet_name == "Max" and out[0].task_ids == [2]
+
+
+from group_merge import display_name
+
+
+def test_merged_event_drops_each_pets_own_name_from_the_task_name():
+    out = merge_grouped([
+        occ(1, "Kat", "g1", name="walk Kat every morning"),
+        occ(2, "Max", "g1", name="walk Max every morning"),
+    ])
+    assert len(out) == 1
+    assert out[0].name == "walk every morning"
+    assert out[0].pet_name == "Kat & Max"
+
+
+def test_a_line_naming_both_pets_loses_the_dangling_and():
+    out = merge_grouped([
+        occ(1, "Kat", "g1", name="walk Kat and Max every morning"),
+        occ(2, "Max", "g1", name="walk Kat and Max every morning"),
+    ])
+    assert out[0].name == "walk every morning"
+
+
+def test_names_without_pet_names_are_left_alone():
+    out = merge_grouped([occ(1, "Kat", "g1", name="walk the dogs"), occ(2, "Max", "g1", name="walk the dogs")])
+    assert out[0].name == "walk the dogs"
+
+
+def test_a_single_pet_event_keeps_its_full_name():
+    out = merge_grouped([occ(1, "Kat", None, name="walk Kat every morning")])
+    assert out[0].name == "walk Kat every morning"
+
+
+def test_display_name_never_returns_an_empty_name():
+    assert display_name("Kat", ["Kat"]) == "Kat"

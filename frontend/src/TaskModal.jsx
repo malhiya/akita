@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { PRIORITY_STYLES } from "./priorities";
 import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 function toForm(t) {
   return {
     name: t.name,
@@ -24,7 +26,7 @@ function prettyDate(s) {
   });
 }
 
-export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn, onClose, onChanged }) {
+export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames, eventName, occursOn, onClose, onChanged }) {
   const [task, setTask] = useState(null);
   const [mode, setMode] = useState("view");
   const [form, setForm] = useState(null);
@@ -38,6 +40,12 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
   const [scope, setScope] = useState("all");   // "all" | "one"
   const [onePet, setOnePet] = useState(0);     // index into ids/names when scope is "one"
   const targetIds = grouped && scope === "one" ? [ids[onePet]] : ids;
+
+  // "Add pet": the owner's other pets that aren't already part of this event
+  const [allPets, setAllPets] = useState([]);
+  const [addPetId, setAddPetId] = useState("");
+  const [adding, setAdding] = useState(false);
+  const availablePets = allPets.filter((p) => !names.includes(p.name));
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +63,17 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
   }, [taskId]);
 
   useEffect(() => {
+    if (ownerId == null) return;
+    let cancelled = false;
+    async function loadPets() {
+      const res = await fetch(`${API_BASE}/owners/${ownerId}/pets`);
+      if (!cancelled && res.ok) setAllPets(await res.json());
+    }
+    loadPets();
+    return () => { cancelled = true; };
+  }, [ownerId]);
+
+  useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -63,7 +82,7 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
   const setField = (field, value) => setForm({ ...form, [field]: value });
 
   function startEdit() {
-    setForm(toForm(task));
+    setForm({ ...toForm(task), name: grouped && eventName ? eventName : task.name });
     setError("");
     setMode("edit");
   }
@@ -88,7 +107,7 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
       for (const id of targetIds) {
         const res = await fetch(`${API_BASE}/tasks/${id}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: JSON_HEADERS,
           body,
         });
         if (!res.ok) {
@@ -126,6 +145,47 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
     }
     onChanged?.();
     onClose();
+  }
+
+  // Copy this task for another pet, then link the copy to the event's tasks.
+  async function handleAddPet() {
+    setAdding(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/pets/${addPetId}/tasks`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          name: task.name,
+          category: task.category,
+          priority: task.priority,
+          duration_minutes: task.duration_minutes,
+          scheduled_time: task.scheduled_time,
+          start_date: task.start_date,
+          end_date: task.end_date,
+          frequency: task.frequency,
+          scheduled_day: task.scheduled_day,
+        }),
+      });
+      if (!res.ok) {
+        setError(formatError(await res.json()));
+        return;
+      }
+      const created = await res.json();
+      const link = await fetch(`${API_BASE}/tasks/link`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ task_ids: [...ids, created.id] }),
+      });
+      onChanged?.();
+      if (!link.ok) {
+        setError("Added the task, but couldn't link it, so it shows as a separate event.");
+        return;
+      }
+      onClose();
+    } finally {
+      setAdding(false);
+    }
   }
 
   const scopePicker = grouped && (
@@ -168,7 +228,7 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
 
         {task && mode === "view" && (
           <>
-            <h3 style={{ marginTop: 0 }}>{task.name}</h3>
+            <h3 style={{ marginTop: 0 }}>{grouped && eventName ? eventName : task.name}</h3>
             <p style={{
               display: "inline-block", margin: "0 0 0.5rem", padding: "2px 8px", borderRadius: 4,
               background: PRIORITY_STYLES[task.priority].bg,
@@ -185,6 +245,20 @@ export default function TaskModal({ taskId, taskIds, petName, petNames, occursOn
             <p><strong>Ends:</strong> {task.end_date ? prettyDate(task.end_date) : "No end date"}</p>
             <p style={{ color: "#555" }}>You clicked the occurrence on {prettyDate(occursOn)}.</p>
             {scopePicker}
+            {availablePets.length > 0 && (
+              <div style={{ margin: "0.6rem 0" }}>
+                <label>
+                  Also do this for:{" "}
+                  <select value={addPetId} onChange={(e) => setAddPetId(e.target.value)}>
+                    <option value="">Choose a pet…</option>
+                    {availablePets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>{" "}
+                <button onClick={handleAddPet} disabled={!addPetId || adding}>
+                  {adding ? "Adding..." : "Add pet"}
+                </button>
+              </div>
+            )}
             {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
             <button onClick={startEdit}>Edit</button>{" "}
             <button onClick={handleDelete}>Delete</button>{" "}
