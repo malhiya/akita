@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Session, col, create_engine, select
-
+from suggestions import Suggestion, SuggestRequest, suggest_fix
 from conflicts import detect_conflicts
 from group_merge import merge_grouped
 from groq_client import get_client
@@ -218,6 +218,26 @@ def get_conflicts(owner_id: int, start: date, end: date, session: SessionDep):
     check_range(start, end)
     occurrences, tasks = collect_occurrences(session, owner_id, start, end)
     return detect_conflicts(merge_grouped(occurrences), tasks)
+
+@app.post("/conflicts/suggest", response_model=Suggestion)
+def suggest_conflict_fix(req: SuggestRequest, session: SessionDep, client: AiClientDep):
+    if not req.dates:
+        raise HTTPException(status_code=422, detail="dates cannot be empty")
+    first, last = min(req.dates), max(req.dates)
+    check_range(first, last)
+
+    occurrences, _ = collect_occurrences(session, req.owner_id, first, last)
+    wanted = set(req.dates)
+    on_those_days = [o for o in occurrences if o.occurs_on in wanted]
+    merged = merge_grouped([o for o in occurrences if o.occurs_on == first])
+
+    def find(ids: list[int]):
+        return next((m for m in merged if set(m.task_ids) == set(ids)), None)
+
+    a, b = find(req.a_task_ids), find(req.b_task_ids)
+    if a is None or b is None:
+        raise HTTPException(status_code=404, detail="That conflict no longer exists")
+    return suggest_fix(client, a, b, on_those_days)
 
 
 @app.post("/tasks/link", response_model=LinkResponse)
