@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 from models import Conflict, Occurrence, Task
@@ -8,16 +9,28 @@ def _span(o: Occurrence) -> tuple[datetime, datetime]:
     return start, start + timedelta(minutes=o.duration_minutes)
 
 
-def _signature(t: Task) -> tuple:
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def _base_name(name: str, pet_names: list[str]) -> str:
+    """The task name with its own pets' names removed, so 'walk Kat' matches 'walk Max'."""
+    own = {w for p in pet_names for w in _words(p)}
+    return " ".join(w for w in _words(name) if w not in own)
+
+
+def _signature(t: Task, pet_names: list[str]) -> tuple:
     """Everything that makes two tasks 'the same task' for different pets."""
     return (
-        t.name.strip().lower(), t.category, t.priority, t.scheduled_time,
+        _base_name(t.name, pet_names), t.category, t.priority, t.scheduled_time,
         t.duration_minutes, t.rrule, t.start_date, t.end_date,
     )
 
 
 def _kind(a: Occurrence, b: Occurrence, tasks: dict[int, Task]) -> str:
-    if _signature(tasks[a.task_ids[0]]) != _signature(tasks[b.task_ids[0]]):
+    sig_a = _signature(tasks[a.task_ids[0]], a.pet_names)
+    sig_b = _signature(tasks[b.task_ids[0]], b.pet_names)
+    if sig_a != sig_b:
         return "overlap"
     pets_a = {tasks[i].pet_id for i in a.task_ids}
     pets_b = {tasks[i].pet_id for i in b.task_ids}

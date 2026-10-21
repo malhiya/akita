@@ -110,3 +110,18 @@ def test_overlap_across_midnight_is_found():
 
 def test_same_time_on_different_days_is_not_a_conflict():
     assert run(make(1, 1, "Kat", day=D), make(2, 2, "Max", name="bath", day=date(2026, 10, 22))) == []
+
+def test_names_that_include_each_pets_own_name_still_count_as_identical():
+    out = run(
+        make(1, 1, "Kat", name="walk Kat every morning"),
+        make(2, 2, "Max", name="walk Max every morning"),
+    )
+    assert len(out) == 1 and out[0].kind == "identical"
+
+
+def test_names_that_differ_beyond_the_pet_name_are_not_identical():
+    out = run(
+        make(1, 1, "Kat", name="walk Kat"),
+        make(2, 2, "Max", name="walk Max slowly"),
+    )
+    assert out[0].kind == "overlap"
