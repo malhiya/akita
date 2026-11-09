@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -24,9 +24,14 @@ from models import (
     TaskCreate,
     TaskRead,
     TaskUpdate,
+    BusyBlock,
+    BusyRead, 
+    CalendarImportResult,
+    CalendarUpload
 )
 from parse_service import ParseRequest, ParseResponse, parse_lines
 from recurrence import build_rrule, expand_occurrences, parse_rrule
+from calendar_import import CalendarImportError, parse_busy_blocks, split_by_day
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +244,54 @@ def suggest_conflict_fix(req: SuggestRequest, session: SessionDep, client: AiCli
         raise HTTPException(status_code=404, detail="That conflict no longer exists")
     return suggest_fix(client, a, b, on_those_days)
 
+IMPORT_DAYS = 120
+
+@app.post("/owners/{owner_id}/calendar", response_model=CalendarImportResult)
+def import_calendar(owner_id: int, upload: CalendarUpload, session: SessionDep):
+    if not session.get(Owner, owner_id):
+        raise HTTPException(status_code=404, detail="Owner not found")
+    first = upload.today or date.today()
+    last = first + timedelta(days=IMPORT_DAYS)
+    try:
+        blocks = parse_busy_blocks(upload.ics, upload.tz, first, last)
+    except CalendarImportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Only after a successful parse: a bad upload leaves the old calendar in place.
+    for old in session.exec(select(BusyBlock).where(BusyBlock.owner_id == owner_id)).all():
+        session.delete(old)
+    pieces = split_by_day(blocks)
+    for day, start_minute, end_minute in pieces:
+        session.add(BusyBlock(owner_id=owner_id, day=day, start_minute=start_minute, end_minute=end_minute))
+    session.commit()
+    return CalendarImportResult(blocks=len(pieces), start=first, end=last)
+
+
+@app.get("/owners/{owner_id}/busy", response_model=list[BusyRead])
+def list_busy(owner_id: int, start: date, end: date, session: SessionDep):
+    check_range(start, end)
+    rows = session.exec(
+        select(BusyBlock)
+        .where(BusyBlock.owner_id == owner_id, BusyBlock.day >= start, BusyBlock.day <= end)
+        .order_by(BusyBlock.day, BusyBlock.start_minute)
+    ).all()
+    return [
+        BusyRead(
+            start=datetime.combine(r.day, time.min) + timedelta(minutes=r.start_minute),
+            end=datetime.combine(r.day, time.min) + timedelta(minutes=r.end_minute),
+        )
+        for r in rows
+    ]
+
+
+@app.delete("/owners/{owner_id}/calendar")
+def clear_calendar(owner_id: int, session: SessionDep):
+    if not session.get(Owner, owner_id):
+        raise HTTPException(status_code=404, detail="Owner not found")
+    for old in session.exec(select(BusyBlock).where(BusyBlock.owner_id == owner_id)).all():
+        session.delete(old)
+    session.commit()
+    return {"ok": True}
 
 @app.post("/tasks/link", response_model=LinkResponse)
 def link_tasks(req: LinkRequest, session: SessionDep):

@@ -164,3 +164,29 @@ class TaskRead(SQLModel):
     frequency: str
     scheduled_day: str | None
     group_id: str | None = None
+
+
+class BusyBlock(SQLModel, table=True):
+    """One busy stretch on one day, as minutes after midnight. No titles, ever."""
+    id: int | None = Field(default=None, primary_key=True)
+    owner_id: int = Field(foreign_key="owner.id", index=True)
+    day: date
+    start_minute: int
+    end_minute: int
+
+
+class CalendarUpload(SQLModel):
+    ics: str = Field(max_length=2_000_000)
+    tz: str
+    today: date | None = None
+
+
+class CalendarImportResult(SQLModel):
+    blocks: int
+    start: date
+    end: date
+
+
+class BusyRead(SQLModel):
+    start: datetime
+    end: datetime
