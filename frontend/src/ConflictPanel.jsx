@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { API_BASE, formatError } from "./taskOptions";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
+const CHECK_DAYS = 120;
 
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -36,6 +37,9 @@ function describe(c) {
   if (c.kind === "duplicate") {
     return `"${a.name}" for ${a.pet_name} is scheduled twice at ${a.time}.`;
   }
+  if (c.kind === "busy") {
+    return `${label(a)} overlaps your calendar (busy ${b.time}–${endTime(b.time, b.duration_minutes)}) by ${c.overlap_minutes} min.`;
+  }
   return `${label(a)} overlaps ${label(b)} by ${c.overlap_minutes} min.`;
 }
 
@@ -56,8 +60,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
     async function load() {
       const today = new Date();
       const params = new URLSearchParams({
-        owner_id: ownerId, start: ymd(today), end: ymd(addDays(today, 27)),
-      });
+        owner_id: ownerId, start: ymd(today), end: ymd(addDays(today, CHECK_DAYS)),      });
       try {
         const res = await fetch(`${API_BASE}/conflicts?${params}`);
         if (!res.ok) throw new Error("bad response");
@@ -151,13 +154,13 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
 
   if (loadError) return <p style={{ color: "#b91c1c" }}>{loadError}</p>;
   if (conflicts.length === 0) {
-    return <p style={{ color: "#166534" }}>No scheduling conflicts in the next 4 weeks.</p>;
+        return <p style={{ color: "#166534" }}>No scheduling conflicts in the next {CHECK_DAYS} days.</p>;
   }
 
   return (
     <div style={{ border: "1px solid #f59e0b", background: "#fffbeb", color: "#111", borderRadius: 6, padding: "0.5rem 0.9rem", margin: "0.5rem 0", textAlign: "left" }}>
       <strong>
-        {conflicts.length} scheduling conflict{conflicts.length > 1 ? "s" : ""} in the next 4 weeks
+        {conflicts.length} scheduling conflict{conflicts.length > 1 ? "s" : ""} in the next {CHECK_DAYS} days
       </strong>
       <ul style={{ margin: "0.4rem 0", paddingLeft: "1.1rem" }}>
         {conflicts.map((c) => {
@@ -170,7 +173,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
               {c.kind === "identical" && (
                 <button disabled={busy} onClick={() => handleLink(c)}>Link them</button>
               )}
-              {c.kind === "overlap" && !s && (
+              {(c.kind === "overlap" || c.kind === "busy") && !s && (
                 <button disabled={busy} onClick={() => handleSuggest(c)}>
                   {busy ? "Thinking..." : "Suggest a fix"}
                 </button>
