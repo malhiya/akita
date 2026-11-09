@@ -6,6 +6,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { API_BASE } from "./taskOptions";
 import TaskModal from "./TaskModal";
 
+const BUSY_COLOR = "#9ca3af";
+
 // Local YYYY-MM-DD (toISOString would shift the date into UTC)
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -20,7 +22,7 @@ function toEvent(o) {
   const s = PRIORITY_STYLES[o.priority];
   const start = new Date(`${o.occurs_on}T${o.time}:00`);
   const end = new Date(start.getTime() + o.duration_minutes * 60000);
-    return {
+  return {
     id: `${o.task_ids?.[0] ?? o.task_id}-${o.occurs_on}`,
     title: `${s.marker} ${o.pet_name}: ${o.name}`,
     start,
@@ -28,7 +30,7 @@ function toEvent(o) {
     backgroundColor: s.bg,
     borderColor: s.border,
     textColor: s.text,
-        extendedProps: {
+    extendedProps: {
       taskId: o.task_id,
       taskIds: o.task_ids ?? [o.task_id],
       petName: o.pet_name,
@@ -39,9 +41,22 @@ function toEvent(o) {
   };
 }
 
+// The owner's uploaded calendar: grey shading behind the pet events, no titles.
+function toBusyEvent(b, i) {
+  return {
+    id: `busy-${i}-${b.start}`,
+    start: b.start,
+    end: b.end,
+    display: "background",
+    backgroundColor: BUSY_COLOR,
+  };
+}
+
 const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChanged }, ref) {
   const calRef = useRef(null);
   const [events, setEvents] = useState([]);
+  const [busyEvents, setBusyEvents] = useState([]);
+  const [viewType, setViewType] = useState("timeGridWeek");
   const [range, setRange] = useState(null);           // what's on screen
   const [validRange, setValidRange] = useState(null); // locked window: { start, end } (end exclusive)
   const [selected, setSelected] = useState(null);     // event whose popup is open
@@ -74,6 +89,7 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
     const end = validRange && validRange.end < range.end ? validRange.end : range.end;
     if (start >= end) {
       setEvents([]);
+      setBusyEvents([]);
       return;
     }
 
@@ -81,8 +97,14 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
     async function load() {
       const params = new URLSearchParams({ owner_id: ownerId, start, end });
       if (petId !== null) params.set("pet_id", petId);
-      const res = await fetch(`${API_BASE}/schedule?${params}`);
-      if (!cancelled && res.ok) setEvents((await res.json()).map(toEvent));
+      const busyParams = new URLSearchParams({ start, end });
+      const [scheduleRes, busyRes] = await Promise.all([
+        fetch(`${API_BASE}/schedule?${params}`),
+        fetch(`${API_BASE}/owners/${ownerId}/busy?${busyParams}`),
+      ]);
+      if (cancelled) return;
+      if (scheduleRes.ok) setEvents((await scheduleRes.json()).map(toEvent));
+      if (busyRes.ok) setBusyEvents((await busyRes.json()).map(toBusyEvent));
     }
     load();
     return () => { cancelled = true; };
@@ -91,12 +113,17 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
   function handleDatesSet(info) {
     const start = ymd(info.start);
     const end = ymd(info.end);
+    setViewType(info.view.type);
     setRange((r) => (r && r.start === start && r.end === end ? r : { start, end }));
   }
 
+  // In the month grid a background event would shade the whole day, which would
+  // wrongly suggest you are busy all day, so busy time only shows in the hourly views.
+  const shown = viewType === "dayGridMonth" ? events : [...events, ...busyEvents];
+
   return (
     <>
-      <div style={{ display: "flex", gap: "0.75rem", margin: "0.5rem 0" }}>
+      <div style={{ display: "flex", gap: "0.75rem", margin: "0.5rem 0", flexWrap: "wrap" }}>
         {Object.entries(PRIORITY_STYLES).map(([key, s]) => (
           <span key={key} style={{
             background: s.bg, border: `1px solid ${s.border}`, color: s.text,
@@ -105,6 +132,14 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
             {s.marker} {s.label}
           </span>
         ))}
+        {busyEvents.length > 0 && (
+          <span style={{
+            background: BUSY_COLOR, border: "1px solid #6b7280", color: "#111",
+            padding: "2px 8px", borderRadius: 4, opacity: 0.6,
+          }}>
+            Your calendar (busy)
+          </span>
+        )}
       </div>
 
       <FullCalendar
@@ -119,7 +154,7 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
           center: "title",
           right: "dayGridMonth,timeGridWeek,timeGridDay",
         }}
-        events={events}
+        events={shown}
         datesSet={handleDatesSet}
         eventClick={(info) => setSelected(info.event.extendedProps)}
         height="auto"

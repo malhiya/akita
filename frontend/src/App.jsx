@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import Calendar from "./Calendar";
 import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
+import CalendarUpload from "./CalendarUpload";
 import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 
 const EMPTY_TASK = {
@@ -301,6 +302,11 @@ function App() {
         </button>
         <button onClick={() => calendarRef.current.clearRange()}>Clear range</button>
       </div>
+
+      <CalendarUpload
+        ownerId={owner.id}
+        onChanged={() => setCalendarVersion((v) => v + 1)}
+      />
       <ConflictPanel
         ownerId={owner.id}
         version={calendarVersion}
