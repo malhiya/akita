@@ -19,7 +19,7 @@ MAX_CANDIDATES = 6
 class SuggestRequest(BaseModel):
     owner_id: int
     a_task_ids: list[int]
-    b_task_ids: list[int]
+    b_task_ids: list[int]   # empty means "the other side is the owner's own calendar"
     dates: list[date]
 
 
@@ -89,10 +89,14 @@ Respond with a single JSON object and nothing else:
 
 
 def build_messages(mover: Occurrence, stayer: Occurrence, candidates: list[str]):
+    if stayer.task_ids:
+        other = f"{stayer.name} ({stayer.priority} priority) at {stayer.time}"
+    else:  # the owner's own calendar: only the time is known, never what the event is
+        other = f"the owner's own calendar, which is busy from {stayer.time} for {stayer.duration_minutes} minutes"
     user = (
         f"Task to move: {mover.name} ({mover.category}, {mover.priority} priority), "
         f"{mover.duration_minutes} minutes, currently at {mover.time}\n"
-        f"It conflicts with: {stayer.name} ({stayer.priority} priority) at {stayer.time}\n"
+        f"It conflicts with: {other}\n"
         "Free start times:\n" + "\n".join(f"- {t}" for t in candidates)
     )
     return [
@@ -120,45 +124,69 @@ def choose_slot_with_groq(client, mover, stayer, candidates) -> SlotChoice:
     return choice
 
 
-def suggest_fix(client, a: Occurrence, b: Occurrence, day_occurrences: list[Occurrence]) -> Suggestion:
+NON_NEGOTIABLE_NOTE = "This is a non-negotiable task, so check the new time works for your pet."
+
+
+def suggest_fix(
+    client,
+    a: Occurrence,
+    b: Occurrence,
+    day_occurrences: list[Occurrence],
+    busy: list[tuple[date, int, int]] | None = None,
+) -> Suggestion:
     """`a` and `b` are the merged conflicting events; `day_occurrences` are all raw
-    (unmerged) occurrences on the conflict's dates, used to find free time."""
-    picked = pick_mover(a, b)
-    if picked is None:
-        return Suggestion(
-            move_task_ids=[], task_name=b.name, pet_names=list(b.pet_names), old_time=b.time,
-            new_time=None, source="rule",
-            reason="Both tasks are non-negotiable, so neither is moved automatically. Change one of them yourself.",
-        )
-    mover, stayer = picked
+    (unmerged) occurrences on the conflict's dates, used to find free time.
+
+    `busy` is the owner's own calendar on those dates. It always blocks time, and
+    when `b` is a stretch of that calendar (it has no task ids), the pet event `a`
+    is the one that moves, whatever its priority."""
+    calendar_conflict = not b.task_ids
+    if calendar_conflict:
+        mover, stayer = a, b
+    else:
+        picked = pick_mover(a, b)
+        if picked is None:
+            return Suggestion(
+                move_task_ids=[], task_name=b.name, pet_names=list(b.pet_names), old_time=b.time,
+                new_time=None, source="rule",
+                reason="Both tasks are non-negotiable, so neither is moved automatically. Change one of them yourself.",
+            )
+        mover, stayer = picked
     base = dict(
         move_task_ids=list(mover.task_ids), task_name=mover.name,
         pet_names=list(mover.pet_names), old_time=mover.time,
     )
 
     skip = set(mover.task_ids)
-    busy = [
+    blocked = [
         (_minutes(o.time), _minutes(o.time) + o.duration_minutes)
         for o in day_occurrences if o.task_id not in skip
     ]
-    candidates = free_slots(mover.duration_minutes, busy, mover.time)
+    blocked += [(start, end) for _day, start, end in (busy or [])]
+    candidates = free_slots(mover.duration_minutes, blocked, mover.time)
     if not candidates:
         return Suggestion(
             **base, new_time=None, source="rule",
             reason="No free time of that length was found between 06:00 and 22:00 on the affected days.",
         )
 
+    result = None
     if client is None:
         notice = "AI suggestions aren't configured; used the closest free time."
     else:
         try:
             choice = choose_slot_with_groq(client, mover, stayer, candidates)
-            return Suggestion(**base, new_time=choice.time, reason=choice.reason, source="ai")
+            result = Suggestion(**base, new_time=choice.time, reason=choice.reason, source="ai")
         except SuggestionError as e:
             logger.warning("Groq suggestion failed, using the closest free time: %s", e)
             notice = "AI suggestion was unavailable; used the closest free time."
 
-    return Suggestion(
-        **base, new_time=candidates[0], source="rule", notice=notice,
-        reason="The closest free time to the original.",
-    )
+    if result is None:
+        result = Suggestion(
+            **base, new_time=candidates[0], source="rule", notice=notice,
+            reason="The closest free time to the original.",
+        )
+
+    if calendar_conflict and mover.priority == "non-negotiable":
+        result.notice = f"{result.notice} {NON_NEGOTIABLE_NOTE}" if result.notice else NON_NEGOTIABLE_NOTE
+    return result
