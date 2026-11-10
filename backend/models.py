@@ -112,7 +112,7 @@ class Occurrence(SQLModel):
 
 
 class Conflict(SQLModel):
-    kind: Literal["identical", "duplicate", "overlap"]
+    kind: Literal["identical", "duplicate", "overlap", "busy"]
     a: Occurrence
     b: Occurrence
     overlap_minutes: int
@@ -190,3 +190,10 @@ class CalendarImportResult(SQLModel):
 class BusyRead(SQLModel):
     start: datetime
     end: datetime
+
+
+class ShareLink(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    owner_id: int = Field(foreign_key="owner.id", unique=True, index=True)
+    token: str = Field(unique=True, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
