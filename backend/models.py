@@ -197,3 +197,7 @@ class ShareLink(SQLModel, table=True):
     owner_id: int = Field(foreign_key="owner.id", unique=True, index=True)
     token: str = Field(unique=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ShareRead(SQLModel):
+    token: str | None = None

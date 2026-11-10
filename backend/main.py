@@ -3,11 +3,11 @@ import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, Session, col, create_engine, select
 from suggestions import Suggestion, SuggestRequest, suggest_fix
-from conflicts import detect_conflicts
+from conflicts import busy_occurrence, busy_overlaps, detect_conflicts
 from group_merge import merge_grouped
 from groq_client import get_client
 from models import (
@@ -27,11 +27,16 @@ from models import (
     BusyBlock,
     BusyRead, 
     CalendarImportResult,
-    CalendarUpload
+    CalendarUpload,
+    ShareLink,
+    ShareRead
 )
 from parse_service import ParseRequest, ParseResponse, parse_lines
 from recurrence import build_rrule, expand_occurrences, parse_rrule
 from calendar_import import CalendarImportError, parse_busy_blocks, split_by_day
+from ics_feed import build_feed
+from sharing import get_or_create_link, owner_for_token, revoke_link
+
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +209,15 @@ def collect_occurrences(
             ))
     return sorted(occurrences, key=lambda o: (o.occurs_on, o.time)), tasks
 
+def load_busy(session: Session, owner_id: int, start: date, end: date) -> list[tuple[date, int, int]]:
+    """The owner's uploaded calendar as (day, start_minute, end_minute) pieces."""
+    rows = session.exec(
+        select(BusyBlock).where(
+            BusyBlock.owner_id == owner_id, BusyBlock.day >= start, BusyBlock.day <= end
+        )
+    ).all()
+    return [(r.day, r.start_minute, r.end_minute) for r in rows]
+
 
 @app.get("/schedule", response_model=list[Occurrence])
 def get_schedule(
@@ -222,7 +236,10 @@ def get_schedule(
 def get_conflicts(owner_id: int, start: date, end: date, session: SessionDep):
     check_range(start, end)
     occurrences, tasks = collect_occurrences(session, owner_id, start, end)
-    return detect_conflicts(merge_grouped(occurrences), tasks)
+    # one day past the end, so an event running past midnight meets early-morning busy time
+    busy = load_busy(session, owner_id, start, end + timedelta(days=1))
+    return detect_conflicts(merge_grouped(occurrences), tasks, busy)
+
 
 @app.post("/conflicts/suggest", response_model=Suggestion)
 def suggest_conflict_fix(req: SuggestRequest, session: SessionDep, client: AiClientDep):
@@ -235,14 +252,22 @@ def suggest_conflict_fix(req: SuggestRequest, session: SessionDep, client: AiCli
     wanted = set(req.dates)
     on_those_days = [o for o in occurrences if o.occurs_on in wanted]
     merged = merge_grouped([o for o in occurrences if o.occurs_on == first])
+    busy = load_busy(session, req.owner_id, first, last + timedelta(days=1))
 
     def find(ids: list[int]):
         return next((m for m in merged if set(m.task_ids) == set(ids)), None)
 
-    a, b = find(req.a_task_ids), find(req.b_task_ids)
-    if a is None or b is None:
+    a = find(req.a_task_ids)
+    if a is None:
         raise HTTPException(status_code=404, detail="That conflict no longer exists")
-    return suggest_fix(client, a, b, on_those_days)
+    if req.b_task_ids:
+        b = find(req.b_task_ids)
+    else:  # the other side is the owner's calendar
+        hits = busy_overlaps(a, busy)
+        b = busy_occurrence(*hits[0][:3]) if hits else None
+    if b is None:
+        raise HTTPException(status_code=404, detail="That conflict no longer exists")
+    return suggest_fix(client, a, b, on_those_days, [p for p in busy if p[0] in wanted])
 
 IMPORT_DAYS = 120
 
@@ -388,3 +413,60 @@ def parse_tasks(req: ParseRequest, session: SessionDep, client: AiClientDep):
     if req.pet_id is not None and req.pet_id not in {p.id for p in pets}:
         raise HTTPException(status_code=404, detail="Pet not found")
     return parse_lines(client, pets, req.text, req.pet_id, req.today or date.today())
+
+SHARE_PAST_DAYS = 7
+SHARE_DAYS = 120
+
+
+def owner_from_token(session: Session, token: str) -> int:
+    owner_id = owner_for_token(session, token)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    return owner_id
+
+
+@app.get("/owners/{owner_id}/share", response_model=ShareRead)
+def get_share(owner_id: int, session: SessionDep):
+    """Does this owner have a link yet? token is null if not."""
+    if not session.get(Owner, owner_id):
+        raise HTTPException(status_code=404, detail="Owner not found")
+    link = session.exec(select(ShareLink).where(ShareLink.owner_id == owner_id)).first()
+    return ShareRead(token=link.token if link else None)
+
+
+@app.post("/owners/{owner_id}/share", response_model=ShareRead)
+def create_share(owner_id: int, session: SessionDep):
+    """Create the owner's share link, or return the one they already have."""
+    if not session.get(Owner, owner_id):
+        raise HTTPException(status_code=404, detail="Owner not found")
+    return ShareRead(token=get_or_create_link(session, owner_id).token)
+
+
+@app.delete("/owners/{owner_id}/share", status_code=204)
+def delete_share(owner_id: int, session: SessionDep):
+    """Revoke the link. Anyone using it gets a 404 from then on."""
+    revoke_link(session, owner_id)
+
+
+@app.get("/share/{token}/schedule", response_model=list[Occurrence])
+def shared_schedule(token: str, start: date, end: date, session: SessionDep):
+    owner_id = owner_from_token(session, token)
+    check_range(start, end)
+    occurrences, _ = collect_occurrences(session, owner_id, start, end)
+    return merge_grouped(occurrences)
+
+
+@app.get("/share/{token}/calendar.ics")
+def shared_calendar(token: str, session: SessionDep):
+    owner_id = owner_from_token(session, token)
+    today = date.today()
+    occurrences, _ = collect_occurrences(
+        session, owner_id, today - timedelta(days=SHARE_PAST_DAYS), today + timedelta(days=SHARE_DAYS)
+    )
+    owner = session.get(Owner, owner_id)
+    text = build_feed(merge_grouped(occurrences), f"{owner.name}'s pet schedule")
+    return Response(
+        content=text,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'inline; filename="akita.ics"'},
+    )
