@@ -9,7 +9,6 @@ WEEKDAY_TO_CODE = {
 CODE_TO_WEEKDAY = {code: day for day, code in WEEKDAY_TO_CODE.items()}
 
 
-
 def build_rrule(frequency: str, scheduled_day: str | None = None) -> str | None:
     """Turn the form's simple choice into an RRULE string for storage."""
     if frequency == "once":
@@ -35,6 +34,7 @@ def parse_rrule(rrule: str | None) -> dict:
             return {"frequency": "weekly", "scheduled_day": CODE_TO_WEEKDAY[code]}
     raise ValueError(f"unrecognized rrule: {rrule}")
 
+
 def expand_occurrences(
     rrule: str | None,
     start_date: date,
@@ -48,8 +48,8 @@ def expand_occurrences(
     if window_start > window_end:
         return []
 
-    if rrule is None:  # one-time task
-        return [start_date]  # already known to sit inside the window
+    if rrule is None:  # one-time task: it occurs once, on start_date
+        return [start_date] if window_start <= start_date <= window_end else []
 
     rule = rrulestr(rrule, dtstart=datetime.combine(start_date, time.min))
     after = datetime.combine(window_start, time.min)
