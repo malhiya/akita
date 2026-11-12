@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { API_BASE, formatError } from "./taskOptions";
+import { apiFetch } from "./api";
 
 async function errorText(res) {
   try {
@@ -26,7 +27,7 @@ export default function SharePanel({ ownerId }) {
     setToken(null);
     async function load() {
       try {
-        const res = await fetch(`${API_BASE}/owners/${ownerId}/share`);
+        const res = await apiFetch(`/owners/${ownerId}/share`);
         if (res.ok && !cancelled) setToken((await res.json()).token);
       } catch {
         /* link status stays unknown; creating one still works */
@@ -43,7 +44,7 @@ export default function SharePanel({ ownerId }) {
     setError("");
     setWorking(true);
     try {
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/share`, { method: "POST" });
+      const res = await apiFetch(`/owners/${ownerId}/share`, { method: "POST" });
       if (!res.ok) {
         setError(await errorText(res));
         return;
@@ -62,7 +63,7 @@ export default function SharePanel({ ownerId }) {
     setError("");
     setWorking(true);
     try {
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/share`, { method: "DELETE" });
+      const res = await apiFetch(`/owners/${ownerId}/share`, { method: "DELETE" });
       if (!res.ok) {
         setError(await errorText(res));
         return;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { API_BASE, formatError } from "./taskOptions";
+import { formatError } from "./taskOptions";
+import { apiFetch } from "./api";
 
 const WINDOW_DAYS = 120;      // how far ahead an uploaded calendar is kept
 const MAX_BYTES = 2_000_000;
@@ -34,7 +35,7 @@ export default function CalendarUpload({ ownerId, onChanged }) {
     const today = new Date();
     const params = new URLSearchParams({ start: ymd(today), end: ymd(addDays(today, WINDOW_DAYS)) });
     try {
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/busy?${params}`);
+      const res = await apiFetch(`/owners/${ownerId}/busy?${params}`);
       if (res.ok) setPeriods((await res.json()).length);
     } catch {
       /* status stays unknown; uploading still works */
@@ -58,7 +59,7 @@ export default function CalendarUpload({ ownerId, onChanged }) {
     setWorking(true);
     try {
       const ics = await file.text();
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/calendar`, {
+      const res = await apiFetch(`/owners/${ownerId}/calendar`, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -88,7 +89,7 @@ export default function CalendarUpload({ ownerId, onChanged }) {
     setError("");
     setWorking(true);
     try {
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/calendar`, { method: "DELETE" });
+      const res = await apiFetch(`/owners/${ownerId}/calendar`, { method: "DELETE" });
       if (!res.ok) {
         setError(await errorText(res));
         return;

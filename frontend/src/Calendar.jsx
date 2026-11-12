@@ -3,8 +3,8 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { PRIORITY_STYLES } from "./priorities";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { API_BASE } from "./taskOptions";
 import TaskModal from "./TaskModal";
+import { apiFetch } from "./api";
 
 const BUSY_COLOR = "#9ca3af";
 
@@ -99,8 +99,8 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
       if (petId !== null) params.set("pet_id", petId);
       const busyParams = new URLSearchParams({ start, end });
       const [scheduleRes, busyRes] = await Promise.all([
-        fetch(`${API_BASE}/schedule?${params}`),
-        fetch(`${API_BASE}/owners/${ownerId}/busy?${busyParams}`),
+        apiFetch(`/schedule?${params}`),
+        apiFetch(`/owners/${ownerId}/busy?${busyParams}`),
       ]);
       if (cancelled) return;
       if (scheduleRes.ok) setEvents((await scheduleRes.json()).map(toEvent));

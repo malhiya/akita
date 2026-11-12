@@ -4,7 +4,8 @@ import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
 import CalendarUpload from "./CalendarUpload";
 import SharePanel from "./SharePanel";
-import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
+import { CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
+import { apiFetch } from "./api";
 
 const EMPTY_TASK = {
   name: "",
@@ -40,10 +41,10 @@ function App() {
       const storedId = localStorage.getItem("ownerId");
       let ownerData;
       if (storedId) {
-        const res = await fetch(`${API_BASE}/owners/${storedId}`);
+        const res = await apiFetch(`/owners/${storedId}`);
         ownerData = await res.json();
       } else {
-        const res = await fetch(`${API_BASE}/owners`, {
+        const res = await apiFetch(`/owners`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: "New Owner" }),
@@ -66,22 +67,22 @@ function App() {
   }, [owner, selectedPetId]);
 
   async function fetchPets() {
-    const res = await fetch(`${API_BASE}/owners/${owner.id}/pets`);
+    const res = await apiFetch(`/owners/${owner.id}/pets`);
     setPets(await res.json());
   }
 
   async function fetchTasks() {
-    const url =
+    const path =
       selectedPetId === null
-        ? `${API_BASE}/owners/${owner.id}/tasks`
-        : `${API_BASE}/pets/${selectedPetId}/tasks`;
-    const res = await fetch(url);
+        ? `/owners/${owner.id}/tasks`
+        : `/pets/${selectedPetId}/tasks`;
+    const res = await apiFetch(path);
     setTasks(await res.json());
   }
 
   async function handleAddPet(e) {
     e.preventDefault();
-    await fetch(`${API_BASE}/owners/${owner.id}/pets`, {
+    await apiFetch(`/owners/${owner.id}/pets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -96,7 +97,7 @@ function App() {
   }
 
   async function handleDeletePet(petId) {
-    await fetch(`${API_BASE}/pets/${petId}`, { method: "DELETE" });
+    await apiFetch(`/pets/${petId}`, { method: "DELETE" });
     if (selectedPetId === petId) setSelectedPetId(null);
     await fetchPets();
     fetchTasks();
@@ -108,7 +109,7 @@ function App() {
     setSubmitting(true);
     setTaskError("");
     try {
-      const res = await fetch(`${API_BASE}/pets/${selectedPetId}/tasks`, {
+      const res = await apiFetch(`/pets/${selectedPetId}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -136,7 +137,7 @@ function App() {
   }
 
   async function handleDeleteTask(taskId) {
-    await fetch(`${API_BASE}/tasks/${taskId}`, { method: "DELETE" });
+    await apiFetch(`/tasks/${taskId}`, { method: "DELETE" });
     fetchTasks();
     setCalendarVersion((v) => v + 1);
   }

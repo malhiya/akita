@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { API_BASE, formatError } from "./taskOptions";
+import { formatError } from "./taskOptions";
+import { apiFetch } from "./api";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const CHECK_DAYS = 120;
@@ -62,7 +63,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
       const params = new URLSearchParams({
         owner_id: ownerId, start: ymd(today), end: ymd(addDays(today, CHECK_DAYS)),      });
       try {
-        const res = await fetch(`${API_BASE}/conflicts?${params}`);
+        const res = await apiFetch(`/conflicts?${params}`);
         if (!res.ok) throw new Error("bad response");
         const data = await res.json();
         if (cancelled) return;
@@ -85,7 +86,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
     setBusyKey(key);
     setError(key, "");
     try {
-      const res = await fetch(`${API_BASE}/conflicts/suggest`, {
+      const res = await apiFetch(`/conflicts/suggest`, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
     setError(key, "");
     try {
       for (const id of s.move_task_ids) {
-        const res = await fetch(`${API_BASE}/tasks/${id}`, {
+        const res = await apiFetch(`/tasks/${id}`, {
           method: "PATCH",
           headers: JSON_HEADERS,
           body: JSON.stringify({ scheduled_time: s.new_time }),
@@ -131,7 +132,7 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
     setBusyKey(key);
     setError(key, "");
     try {
-      const res = await fetch(`${API_BASE}/tasks/link`, {
+      const res = await apiFetch(`/tasks/link`, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({ task_ids: [...c.a.task_ids, ...c.b.task_ids] }),

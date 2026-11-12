@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PRIORITY_STYLES } from "./priorities";
-import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
+import { CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
+import { apiFetch } from "./api";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -50,7 +51,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const res = await fetch(`${API_BASE}/tasks/${taskId}`);
+      const res = await apiFetch(`/tasks/${taskId}`);
       if (cancelled) return;
       if (!res.ok) {
         setError("Couldn't load this task. It may have been deleted.");
@@ -66,7 +67,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
     if (ownerId == null) return;
     let cancelled = false;
     async function loadPets() {
-      const res = await fetch(`${API_BASE}/owners/${ownerId}/pets`);
+      const res = await apiFetch(`/owners/${ownerId}/pets`);
       if (!cancelled && res.ok) setAllPets(await res.json());
     }
     loadPets();
@@ -105,7 +106,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
     try {
       const saved = [];
       for (const id of targetIds) {
-        const res = await fetch(`${API_BASE}/tasks/${id}`, {
+        const res = await apiFetch(`/tasks/${id}`, {
           method: "PATCH",
           headers: JSON_HEADERS,
           body,
@@ -136,7 +137,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
       : "Delete this task and all of its occurrences?";
     if (!window.confirm(msg)) return;
     for (const id of targetIds) {
-      const res = await fetch(`${API_BASE}/tasks/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/tasks/${id}`, { method: "DELETE" });
       if (!res.ok) {
         setError("Couldn't delete this task.");
         onChanged?.();
@@ -152,7 +153,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
     setAdding(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/pets/${addPetId}/tasks`, {
+      const res = await apiFetch(`/pets/${addPetId}/tasks`, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -172,7 +173,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
         return;
       }
       const created = await res.json();
-      const link = await fetch(`${API_BASE}/tasks/link`, {
+      const link = await apiFetch(`/tasks/link`, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({ task_ids: [...ids, created.id] }),

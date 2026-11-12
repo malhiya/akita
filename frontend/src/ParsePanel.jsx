@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { API_BASE, CATEGORIES, PRIORITIES, DAYS, formatError } from "./taskOptions";
+import { CATEGORIES, PRIORITIES, DAYS, formatError } from "./taskOptions";
 import { PRIORITY_STYLES } from "./priorities";
+import { apiFetch } from "./api";
 
 const MAX_CHARS = 2000; // matches the backend limit
 const FIELD_LABELS = {
@@ -57,7 +58,7 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
     try {
       const body = { owner_id: ownerId, text, today: todayLocal() };
       if (selectedPetId !== null) body.pet_id = selectedPetId;
-      const res = await fetch(`${API_BASE}/parse`, {
+      const res = await apiFetch(`/parse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -128,7 +129,7 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
     let saved = 0;
     for (const d of ready) {
       try {
-        const res = await fetch(`${API_BASE}/pets/${d.pet_id}/tasks`, {
+        const res = await apiFetch(`/pets/${d.pet_id}/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
