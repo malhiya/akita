@@ -16,3 +16,4 @@ dist/
 # os/editor
 .DS_Store
 .vscode/
+scratch/
