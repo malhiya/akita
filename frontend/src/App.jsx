@@ -3,6 +3,7 @@ import Calendar from "./Calendar";
 import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
 import CalendarUpload from "./CalendarUpload";
+import SharePanel from "./SharePanel";
 import { API_BASE, CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 
 const EMPTY_TASK = {
@@ -307,6 +308,7 @@ function App() {
         ownerId={owner.id}
         onChanged={() => setCalendarVersion((v) => v + 1)}
       />
+      <SharePanel ownerId={owner.id} />     
       <ConflictPanel
         ownerId={owner.id}
         version={calendarVersion}
