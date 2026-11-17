@@ -1,6 +1,6 @@
 export const PRIORITY_STYLES = {
-  "non-negotiable": { label: "Non-negotiable", marker: "!!!", bg: "#fecaca", border: "#b91c1c", text: "#7f1d1d" },
-  high:             { label: "High",           marker: "!!",  bg: "#fed7aa", border: "#c2410c", text: "#7c2d12" },
-  medium:           { label: "Medium",         marker: "!",   bg: "#fef08a", border: "#a16207", text: "#713f12" },
-  low:              { label: "Low",            marker: "–",   bg: "#bbf7d0", border: "#15803d", text: "#14532d" },
+  "non-negotiable": { label: "Non-negotiable", marker: "!!!", bg: "#dccff8", border: "#8a6fd6", text: "#2b2a33" },
+  high:             { label: "High",           marker: "!!",  bg: "#f9c9bb", border: "#f28b72", text: "#2b2a33" },
+  medium:           { label: "Medium",         marker: "!",   bg: "#fae7a2", border: "#e0b730", text: "#2b2a33" },
+  low:              { label: "Low",            marker: "–",   bg: "#cde8d3", border: "#5fae80", text: "#2b2a33" },
 };
