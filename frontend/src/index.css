@@ -658,3 +658,48 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- tasks list pages ---------- */
+.ak-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+.ak-pager-info {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ak-muted);
+}
+
+/* ---------- avatars and account button ---------- */
+.ak-app .ak-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: var(--ak-ink);
+  font-family: var(--ak-font-head);
+  font-weight: 600;
+  line-height: 1;
+}
+.ak-app .ak-account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 8px;
+}
+.ak-app .ak-account-chevron {
+  margin-right: 4px;
+}
+.ak-app .ak-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--ak-border);
+  font-weight: 800;
+}

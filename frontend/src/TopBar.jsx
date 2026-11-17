@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
+import Avatar from "./Avatar";
+import { OWNER_COLOR } from "./petColors";
 
 function Logo() {
   return (
@@ -46,16 +48,35 @@ export default function TopBar({ ownerName }) {
         <div className="ak-menu-wrap" ref={wrapRef}>
           <button
             type="button"
-            className="ak-btn ak-btn-secondary"
+            className="ak-btn ak-btn-secondary ak-account-btn"
             aria-haspopup="menu"
             aria-expanded={open}
             aria-controls={menuId}
             onClick={() => setOpen((v) => !v)}
           >
-            {ownerName} ▾
+            <Avatar name={ownerName} color={OWNER_COLOR} size={30} />
+            {ownerName}
+            <svg
+              className="ak-account-chevron"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
           </button>
           {open && (
             <div id={menuId} className="ak-menu" role="menu">
+              <div className="ak-menu-head" role="presentation">
+                <Avatar name={ownerName} color={OWNER_COLOR} size={36} />
+                {ownerName}
+              </div>
               <button type="button" role="menuitem" className="ak-menu-item" disabled>
                 Show my access code
               </button>
