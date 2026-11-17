@@ -4,6 +4,8 @@ import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
 import CalendarUpload from "./CalendarUpload";
 import SharePanel from "./SharePanel";
+import TopBar from "./TopBar";
+import { Button, Card, Field } from "./ui";
 import { CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 import { apiFetch } from "./api";
 
@@ -146,7 +148,13 @@ function App() {
     setNewTask({ ...newTask, [field]: value });
   }
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) {
+    return (
+      <div className="ak-app">
+        <p className="ak-main">Loading...</p>
+      </div>
+    );
+  }
 
   const petName = (id) => pets.find((p) => p.id === id)?.name ?? "Unknown";
 
@@ -189,139 +197,180 @@ function App() {
   }
 
   return (
-    <div>
-      <h1>Welcome, {owner.name}</h1>
+    <div className="ak-app">
+      <TopBar ownerName={owner.name} />
 
-      <h2>Your Pets</h2>
-      <ul>
-        {pets.map((pet) => (
-          <li key={pet.id}>
-            {pet.name} — {pet.species}, age {pet.age}
-            {pet.health_notes && ` · ${pet.health_notes}`}
-            <button onClick={() => handleDeletePet(pet.id)}>Delete</button>
-          </li>
-        ))}
-      </ul>
+      <main className="ak-main">
+        <Card title="Your pets">
+          <ul className="ak-list">
+            {pets.map((pet) => (
+              <li key={pet.id}>
+                <span>
+                  {pet.name} — {pet.species}, age {pet.age}
+                  {pet.health_notes && ` · ${pet.health_notes}`}
+                </span>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  aria-label={`Delete ${pet.name}`}
+                  onClick={() => handleDeletePet(pet.id)}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
 
-      <h3>Add a Pet</h3>
-      <form onSubmit={handleAddPet}>
-        <input placeholder="Name" value={newPet.name}
-          onChange={(e) => setNewPet({ ...newPet, name: e.target.value })} />
-        <input placeholder="Species" value={newPet.species}
-          onChange={(e) => setNewPet({ ...newPet, species: e.target.value })} />
-        <input placeholder="Age" type="number" value={newPet.age}
-          onChange={(e) => setNewPet({ ...newPet, age: e.target.value })} />
-        <input placeholder="Health notes (e.g. diabetic)" value={newPet.health_notes}
-          onChange={(e) => setNewPet({ ...newPet, health_notes: e.target.value })} />
-        <button type="submit">Add Pet</button>
-      </form>
+          <h3>Add a pet</h3>
+          <form className="ak-form" onSubmit={handleAddPet}>
+            <Field label="Name">
+              <input required value={newPet.name}
+                onChange={(e) => setNewPet({ ...newPet, name: e.target.value })} />
+            </Field>
+            <Field label="Species">
+              <input required value={newPet.species}
+                onChange={(e) => setNewPet({ ...newPet, species: e.target.value })} />
+            </Field>
+            <Field label="Age in years">
+              <input type="number" min="0" required value={newPet.age}
+                onChange={(e) => setNewPet({ ...newPet, age: e.target.value })} />
+            </Field>
+            <Field label="Health notes (optional)" hint="Used when choosing task priorities.">
+              <input value={newPet.health_notes}
+                onChange={(e) => setNewPet({ ...newPet, health_notes: e.target.value })} />
+            </Field>
+            <Button variant="primary" type="submit">Add pet</Button>
+          </form>
+        </Card>
 
-      <h2>Tasks</h2>
-      <label>
-        Show tasks for:{" "}
-        <select
-          value={selectedPetId ?? "all"}
-          onChange={(e) =>
-            setSelectedPetId(e.target.value === "all" ? null : Number(e.target.value))
-          }
-        >
-          <option value="all">All Pets</option>
-          {pets.map((pet) => (
-            <option key={pet.id} value={pet.id}>{pet.name}</option>
-          ))}
-        </select>
-      </label>
-
-      <ul>
-        {tasks.map((task) => (
-          <li key={task.id}>
-            {selectedPetId === null && `[${petName(task.pet_id)}] `}
-            {task.name} — {task.category}, {task.priority}, {task.scheduled_time} for{" "}
-            {task.duration_minutes} min ({describeRecurrence(task.rrule)})
-            <button onClick={() => handleDeleteTask(task.id)}>Delete</button>
-          </li>
-        ))}
-      </ul>
-
-      <h3>Add tasks from text</h3>
-      <ParsePanel
-        ownerId={owner.id}
-        pets={pets}
-        selectedPetId={selectedPetId}
-        onSaved={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
-      />
-
-      <h3>Add a Task</h3>
-      {selectedPetId === null ? (
-        <p>Select a pet above to add a task.</p>
-      ) : (
-        <form onSubmit={handleAddTask}>
-          <input placeholder="Task name" required value={newTask.name}
-            onChange={(e) => setTaskField("name", e.target.value)} />
-          <select value={newTask.category} onChange={(e) => setTaskField("category", e.target.value)}>
-            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select value={newTask.priority} onChange={(e) => setTaskField("priority", e.target.value)}>
-            {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <input type="number" min="1" max="240" required value={newTask.duration_minutes}
-            onChange={(e) => setTaskField("duration_minutes", e.target.value)} /> min
-          <input type="time" required value={newTask.scheduled_time}
-            onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
-          <label>Start <input type="date" required value={newTask.start_date}
-            onChange={(e) => setTaskField("start_date", e.target.value)} /></label>
-          <label>End (optional) <input type="date" value={newTask.end_date}
-            onChange={(e) => setTaskField("end_date", e.target.value)} /></label>
-          <select value={newTask.frequency} onChange={(e) => setTaskField("frequency", e.target.value)}>
-            <option value="once">Once</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-          </select>
-          {newTask.frequency === "weekly" && (
-            <select value={newTask.scheduled_day} onChange={(e) => setTaskField("scheduled_day", e.target.value)}>
-              {DAYS.map((d) => <option key={d}>{d}</option>)}
+        <Card title="Tasks">
+          <label className="ak-inline">
+            Show tasks for
+            <select
+              value={selectedPetId ?? "all"}
+              onChange={(e) =>
+                setSelectedPetId(e.target.value === "all" ? null : Number(e.target.value))
+              }
+            >
+              <option value="all">All Pets</option>
+              {pets.map((pet) => (
+                <option key={pet.id} value={pet.id}>{pet.name}</option>
+              ))}
             </select>
+          </label>
+
+          <ul className="ak-list">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <span>
+                  {selectedPetId === null && `[${petName(task.pet_id)}] `}
+                  {task.name} — {task.category}, {task.priority}, {task.scheduled_time} for{" "}
+                  {task.duration_minutes} min ({describeRecurrence(task.rrule)})
+                </span>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  aria-label={`Delete task ${task.name}`}
+                  onClick={() => handleDeleteTask(task.id)}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card title="Add tasks from text">
+          <ParsePanel
+            ownerId={owner.id}
+            pets={pets}
+            selectedPetId={selectedPetId}
+            onSaved={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+          />
+        </Card>
+
+        <Card title="Add a task">
+          {selectedPetId === null ? (
+            <p>Select a pet above to add a task.</p>
+          ) : (
+            <form className="ak-form" onSubmit={handleAddTask}>
+              <input placeholder="Task name" aria-label="Task name" required value={newTask.name}
+                onChange={(e) => setTaskField("name", e.target.value)} />
+              <select aria-label="Category" value={newTask.category}
+                onChange={(e) => setTaskField("category", e.target.value)}>
+                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+              <select aria-label="Priority" value={newTask.priority}
+                onChange={(e) => setTaskField("priority", e.target.value)}>
+                {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+              </select>
+              <input type="number" min="1" max="240" required aria-label="Minutes"
+                value={newTask.duration_minutes}
+                onChange={(e) => setTaskField("duration_minutes", e.target.value)} /> min
+              <input type="time" required aria-label="Start time" value={newTask.scheduled_time}
+                onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
+              <label className="ak-inline">Start <input type="date" required value={newTask.start_date}
+                onChange={(e) => setTaskField("start_date", e.target.value)} /></label>
+              <label className="ak-inline">End (optional) <input type="date" value={newTask.end_date}
+                onChange={(e) => setTaskField("end_date", e.target.value)} /></label>
+              <select aria-label="Repeats" value={newTask.frequency}
+                onChange={(e) => setTaskField("frequency", e.target.value)}>
+                <option value="once">Once</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+              {newTask.frequency === "weekly" && (
+                <select aria-label="Day of the week" value={newTask.scheduled_day}
+                  onChange={(e) => setTaskField("scheduled_day", e.target.value)}>
+                  {DAYS.map((d) => <option key={d}>{d}</option>)}
+                </select>
+              )}
+              <Button variant="primary" type="submit" disabled={submitting}>
+                {submitting ? "Adding..." : "Add task"}
+              </Button>
+              {taskError && <p className="ak-error" role="alert">{taskError}</p>}
+            </form>
           )}
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Adding..." : "Add Task"}
-          </button>
-          {taskError && <p>{taskError}</p>}
-        </form>
-      )}
+        </Card>
 
-      <h2>Calendar</h2>
-      <div>
-        <button onClick={() => showPreset("week")}>This week</button>
-        <button onClick={() => showPreset("two")}>Next 2 weeks</button>
-        <button onClick={() => showPreset("month")}>This month</button>
-        <button onClick={() => showPreset("three")}>Next 3 months</button>
-      </div>
-      <div>
-        <label>From <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></label>
-        <label>To <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></label>
-        <button onClick={showCustomRange} disabled={!rangeStart || !rangeEnd || rangeEnd < rangeStart}>
-          Show range
-        </button>
-        <button onClick={() => calendarRef.current.clearRange()}>Clear range</button>
-      </div>
+        <Card title="Calendar">
+          <div className="ak-toolbar">
+            <Button size="sm" onClick={() => showPreset("week")}>This week</Button>
+            <Button size="sm" onClick={() => showPreset("two")}>Next 2 weeks</Button>
+            <Button size="sm" onClick={() => showPreset("month")}>This month</Button>
+            <Button size="sm" onClick={() => showPreset("three")}>Next 3 months</Button>
+          </div>
+          <div className="ak-toolbar">
+            <label className="ak-inline">From <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></label>
+            <label className="ak-inline">To <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></label>
+            <Button size="sm" onClick={showCustomRange} disabled={!rangeStart || !rangeEnd || rangeEnd < rangeStart}>
+              Show range
+            </Button>
+            <Button size="sm" onClick={() => calendarRef.current.clearRange()}>Clear range</Button>
+          </div>
 
-      <CalendarUpload
-        ownerId={owner.id}
-        onChanged={() => setCalendarVersion((v) => v + 1)}
-      />
-      <SharePanel ownerId={owner.id} />     
-      <ConflictPanel
-        ownerId={owner.id}
-        version={calendarVersion}
-        onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
-      />
-      <Calendar
-        ref={calendarRef}
-        ownerId={owner.id}
-        petId={selectedPetId}
-        version={calendarVersion}
-        onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
-      />
+          <div className="ak-stack">
+            <CalendarUpload
+              ownerId={owner.id}
+              onChanged={() => setCalendarVersion((v) => v + 1)}
+            />
+            <SharePanel ownerId={owner.id} />
+            <ConflictPanel
+              ownerId={owner.id}
+              version={calendarVersion}
+              onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+            />
+          </div>
+
+          <Calendar
+            ref={calendarRef}
+            ownerId={owner.id}
+            petId={selectedPetId}
+            version={calendarVersion}
+            onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+          />
+        </Card>
+      </main>
     </div>
   );
 }
