@@ -28,7 +28,9 @@ function prettyDate(s) {
   });
 }
 
-export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames, eventName, occursOn, onClose, onChanged }) {
+export default function TaskModal({
+  ownerId, taskId, taskIds, petName, petNames, eventName, occursOn, startInEdit = false, onClose, onChanged,
+}) {
   const [task, setTask] = useState(null);
   const [mode, setMode] = useState("view");
   const [form, setForm] = useState(null);
@@ -58,11 +60,17 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
         setError("Couldn't load this task. It may have been deleted.");
         return;
       }
-      setTask(await res.json());
+      const data = await res.json();
+      if (cancelled) return;
+      setTask(data);
+      if (startInEdit) {
+        setForm(toForm(data));
+        setMode("edit");
+      }
     }
     load();
     return () => { cancelled = true; };
-  }, [taskId]);
+  }, [taskId, startInEdit]);
 
   useEffect(() => {
     if (ownerId == null) return;
@@ -114,8 +122,9 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
         saved.push(await res.json());
       }
       onChanged?.();
-      if (grouped) {
-        onClose();   // the event may have split or changed; reopen it to see the result
+      if (grouped || startInEdit) {
+        // a merged event may have split or changed, and a list edit has nothing more to show
+        onClose();
         return;
       }
       setTask(saved[0]);
@@ -227,7 +236,7 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
           <dt>Starts</dt><dd>{prettyDate(task.start_date)}</dd>
           <dt>Ends</dt><dd>{task.end_date ? prettyDate(task.end_date) : "No end date"}</dd>
         </dl>
-        <p className="ak-hint">You clicked the occurrence on {prettyDate(occursOn)}.</p>
+        {occursOn && <p className="ak-hint">You clicked the occurrence on {prettyDate(occursOn)}.</p>}
         {scopePicker}
         {availablePets.length > 0 && (
           <div className="ak-toolbar">

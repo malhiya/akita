@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { formatError } from "./taskOptions";
 import { apiFetch } from "./api";
 import { Button } from "./ui";
@@ -50,13 +50,15 @@ function whenText(dates) {
   return `${prettyDate(dates[0])} and ${dates.length - 1} more day${dates.length > 2 ? "s" : ""}`;
 }
 
+// Shows nothing when there are no conflicts; otherwise a slim notice that expands to the list.
 export default function ConflictPanel({ ownerId, version, onChanged }) {
   const [conflicts, setConflicts] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState(false);
   const [suggestions, setSuggestions] = useState({});
   const [errors, setErrors] = useState({});
   const [busyKey, setBusyKey] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const listId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +73,6 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
         const data = await res.json();
         if (cancelled) return;
         setConflicts(data);
-        setLoaded(true);
         setSuggestions({});
         setErrors({});
         setLoadError("");
@@ -159,76 +160,95 @@ export default function ConflictPanel({ ownerId, version, onChanged }) {
     });
 
   if (loadError) return <p className="ak-error" role="alert">{loadError}</p>;
-  if (!loaded) return <p className="ak-hint">Checking for conflicts...</p>;
-  if (conflicts.length === 0) {
-    return <p className="ak-ok">No scheduling conflicts in the next {CHECK_DAYS} days.</p>;
-  }
+  if (conflicts.length === 0) return null;
 
   return (
-    <div>
-      <p className="ak-status">
-        {conflicts.length} scheduling conflict{conflicts.length > 1 ? "s" : ""} in the next {CHECK_DAYS} days
-      </p>
-      <ul className="ak-conflicts">
-        {conflicts.map((c) => {
-          const key = keyOf(c);
-          const s = suggestions[key];
-          const busy = busyKey === key;
-          return (
-            <li key={key} className="ak-conflict">
-              <div>
-                {describe(c)} <span className="ak-hint">({whenText(c.dates)})</span>
-              </div>
+    <div className="ak-conf">
+      <div className="ak-conf-head">
+        <span className="ak-conf-title">
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#2B2A33"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3l10 18H2L12 3z" />
+            <path d="M12 10v5M12 18h.01" />
+          </svg>
+          {conflicts.length} scheduling conflict{conflicts.length > 1 ? "s" : ""} in the next {CHECK_DAYS} days
+        </span>
+        <Button size="sm" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide" : "Review"}
+        </Button>
+      </div>
 
-              <div className="ak-draft-actions">
-                {c.kind === "identical" && (
-                  <Button size="sm" disabled={busy} onClick={() => handleLink(c)}>Link them</Button>
-                )}
-                {(c.kind === "overlap" || c.kind === "busy") && !s && (
-                  <Button size="sm" variant="primary" disabled={busy} onClick={() => handleSuggest(c)}>
-                    {busy ? "Thinking..." : "Suggest a fix"}
-                  </Button>
-                )}
-                {c.kind === "duplicate" && (
-                  <span className="ak-hint">Click the event on the calendar to delete one.</span>
-                )}
-              </div>
+      {open && (
+        <ul id={listId} className="ak-conflicts">
+          {conflicts.map((c) => {
+            const key = keyOf(c);
+            const s = suggestions[key];
+            const busy = busyKey === key;
+            return (
+              <li key={key} className="ak-conflict">
+                <div>
+                  {describe(c)} <span className="ak-hint">({whenText(c.dates)})</span>
+                </div>
 
-              {s && (
-                <div className="ak-suggest">
-                  {s.new_time ? (
-                    <>
-                      <div>
-                        Move <strong>{s.task_name}</strong> ({s.pet_names.join(" & ")}) from {s.old_time} to{" "}
-                        <strong>{s.new_time}</strong>.
-                      </div>
-                      <div className="ak-draft-note">
-                        {s.source === "ai" ? "AI suggestion" : "Rule-based suggestion"}: {s.reason}
-                      </div>
-                      {s.notice && <div className="ak-draft-note is-warn">{s.notice}</div>}
-                      <div className="ak-draft-note">This changes every occurrence of the task.</div>
-                      <div className="ak-draft-actions">
-                        <Button size="sm" variant="primary" disabled={busy} onClick={() => handleApply(c, s)}>
-                          {busy ? "Applying..." : "Apply"}
-                        </Button>
-                        <Button size="sm" disabled={busy} onClick={() => dismiss(key)}>Dismiss</Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>{s.reason}</div>
-                      <div className="ak-draft-actions">
-                        <Button size="sm" onClick={() => dismiss(key)}>Dismiss</Button>
-                      </div>
-                    </>
+                <div className="ak-draft-actions">
+                  {c.kind === "identical" && (
+                    <Button size="sm" disabled={busy} onClick={() => handleLink(c)}>Link them</Button>
+                  )}
+                  {(c.kind === "overlap" || c.kind === "busy") && !s && (
+                    <Button size="sm" variant="primary" disabled={busy} onClick={() => handleSuggest(c)}>
+                      {busy ? "Thinking..." : "Suggest a fix"}
+                    </Button>
+                  )}
+                  {c.kind === "duplicate" && (
+                    <span className="ak-hint">Click the event on the calendar to delete one.</span>
                   )}
                 </div>
-              )}
-              {errors[key] && <div className="ak-error" role="alert">{errors[key]}</div>}
-            </li>
-          );
-        })}
-      </ul>
+
+                {s && (
+                  <div className="ak-suggest">
+                    {s.new_time ? (
+                      <>
+                        <div>
+                          Move <strong>{s.task_name}</strong> ({s.pet_names.join(" & ")}) from {s.old_time} to{" "}
+                          <strong>{s.new_time}</strong>.
+                        </div>
+                        <div className="ak-draft-note">
+                          {s.source === "ai" ? "AI suggestion" : "Rule-based suggestion"}: {s.reason}
+                        </div>
+                        {s.notice && <div className="ak-draft-note is-warn">{s.notice}</div>}
+                        <div className="ak-draft-note">This changes every occurrence of the task.</div>
+                        <div className="ak-draft-actions">
+                          <Button size="sm" variant="primary" disabled={busy} onClick={() => handleApply(c, s)}>
+                            {busy ? "Applying..." : "Apply"}
+                          </Button>
+                          <Button size="sm" disabled={busy} onClick={() => dismiss(key)}>Dismiss</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>{s.reason}</div>
+                        <div className="ak-draft-actions">
+                          <Button size="sm" onClick={() => dismiss(key)}>Dismiss</Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {errors[key] && <div className="ak-error" role="alert">{errors[key]}</div>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
