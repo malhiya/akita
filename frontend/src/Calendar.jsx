@@ -49,6 +49,7 @@ function toBusyEvent(b, i) {
     end: b.end,
     display: "background",
     backgroundColor: BUSY_COLOR,
+    classNames: ["ak-busy"],
   };
 }
 
@@ -123,22 +124,18 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
 
   return (
     <>
-      <div style={{ display: "flex", gap: "0.75rem", margin: "0.5rem 0", flexWrap: "wrap" }}>
+      <div className="ak-key" role="group" aria-label="Priority colors">
         {Object.entries(PRIORITY_STYLES).map(([key, s]) => (
-          <span key={key} style={{
-            background: s.bg, border: `1px solid ${s.border}`, color: s.text,
-            padding: "2px 8px", borderRadius: 4,
-          }}>
+          <span
+            key={key}
+            className="ak-key-item"
+            style={{ background: s.bg, borderColor: s.border, color: s.text }}
+          >
             {s.marker} {s.label}
           </span>
         ))}
         {busyEvents.length > 0 && (
-          <span style={{
-            background: BUSY_COLOR, border: "1px solid #6b7280", color: "#111",
-            padding: "2px 8px", borderRadius: 4, opacity: 0.6,
-          }}>
-            Your calendar (busy)
-          </span>
+          <span className="ak-key-item is-busy">Your calendar (busy)</span>
         )}
       </div>
 

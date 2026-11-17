@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Calendar from "./Calendar";
 import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
 import CalendarUpload from "./CalendarUpload";
 import SharePanel from "./SharePanel";
 import TopBar from "./TopBar";
+import PriorityBadge from "./PriorityBadge";
 import { Button, Card, Chip, Field } from "./ui";
 import { CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 import { PRIORITY_STYLES } from "./priorities";
@@ -48,6 +49,20 @@ function App() {
   // The manual form's pet: the one picked there, else the filtered pet, else the first pet.
   const formPetId = taskPetId ?? selectedPetId ?? pets[0]?.id ?? null;
 
+  const fetchPets = useCallback(async () => {
+    const res = await apiFetch(`/owners/${owner.id}/pets`);
+    setPets(await res.json());
+  }, [owner]);
+
+  const fetchTasks = useCallback(async () => {
+    const path =
+      selectedPetId === null
+        ? `/owners/${owner.id}/tasks`
+        : `/pets/${selectedPetId}/tasks`;
+    const res = await apiFetch(path);
+    setTasks(await res.json());
+  }, [owner, selectedPetId]);
+
   useEffect(() => {
     async function loadOwner() {
       const storedId = localStorage.getItem("ownerId");
@@ -72,25 +87,11 @@ function App() {
 
   useEffect(() => {
     if (owner) fetchPets();
-  }, [owner]);
+  }, [owner, fetchPets]);
 
   useEffect(() => {
     if (owner) fetchTasks();
-  }, [owner, selectedPetId]);
-
-  async function fetchPets() {
-    const res = await apiFetch(`/owners/${owner.id}/pets`);
-    setPets(await res.json());
-  }
-
-  async function fetchTasks() {
-    const path =
-      selectedPetId === null
-        ? `/owners/${owner.id}/tasks`
-        : `/pets/${selectedPetId}/tasks`;
-    const res = await apiFetch(path);
-    setTasks(await res.json());
-  }
+  }, [owner, fetchTasks]);
 
   async function handleAddPet(e) {
     e.preventDefault();
@@ -213,6 +214,7 @@ function App() {
 
       <main className="ak-main">
         <Card title="Your pets">
+          {pets.length === 0 && <p className="ak-hint">No pets yet. Add your first pet below.</p>}
           <ul className="ak-list">
             {pets.map((pet) => (
               <li key={pet.id}>
@@ -252,43 +254,6 @@ function App() {
             </Field>
             <Button variant="primary" type="submit">Add pet</Button>
           </form>
-        </Card>
-
-        <Card title="Tasks">
-          <label className="ak-inline">
-            Show tasks for
-            <select
-              value={selectedPetId ?? "all"}
-              onChange={(e) =>
-                setSelectedPetId(e.target.value === "all" ? null : Number(e.target.value))
-              }
-            >
-              <option value="all">All Pets</option>
-              {pets.map((pet) => (
-                <option key={pet.id} value={pet.id}>{pet.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <ul className="ak-list">
-            {tasks.map((task) => (
-              <li key={task.id}>
-                <span>
-                  {selectedPetId === null && `[${petName(task.pet_id)}] `}
-                  {task.name} — {task.category}, {task.priority}, {task.scheduled_time} for{" "}
-                  {task.duration_minutes} min ({describeRecurrence(task.rrule)})
-                </span>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  aria-label={`Delete task ${task.name}`}
-                  onClick={() => handleDeleteTask(task.id)}
-                >
-                  Delete
-                </Button>
-              </li>
-            ))}
-          </ul>
         </Card>
 
         <Card title="Add tasks with Akita">
@@ -394,6 +359,53 @@ function App() {
           )}
         </Card>
 
+        <Card title="Scheduling conflicts">
+          <ConflictPanel
+            ownerId={owner.id}
+            version={calendarVersion}
+            onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+          />
+        </Card>
+
+        <Card title="Your tasks">
+          <div className="ak-toolbar" role="group" aria-label="Show tasks for">
+            <Chip selected={selectedPetId === null} onClick={() => setSelectedPetId(null)}>
+              All pets
+            </Chip>
+            {pets.map((pet) => (
+              <Chip key={pet.id} selected={selectedPetId === pet.id}
+                onClick={() => setSelectedPetId(pet.id)}>
+                {pet.name}
+              </Chip>
+            ))}
+          </div>
+
+          {tasks.length === 0 && <p className="ak-hint">No tasks yet. Add one above.</p>}
+          <ul className="ak-list">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <div className="ak-task-main">
+                  <div className="ak-task-name">{task.name}</div>
+                  <div className="ak-task-meta">
+                    {selectedPetId === null && `${petName(task.pet_id)} · `}
+                    {task.scheduled_time} for {task.duration_minutes} min ·{" "}
+                    {describeRecurrence(task.rrule)} · {task.category}
+                  </div>
+                </div>
+                <PriorityBadge priority={task.priority} />
+                <Button
+                  size="sm"
+                  variant="danger"
+                  aria-label={`Delete task ${task.name}`}
+                  onClick={() => handleDeleteTask(task.id)}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
         <Card title="Calendar">
           <div className="ak-toolbar">
             <Button size="sm" onClick={() => showPreset("week")}>This week</Button>
@@ -412,11 +424,6 @@ function App() {
 
           <div className="ak-stack">
             <SharePanel ownerId={owner.id} />
-            <ConflictPanel
-              ownerId={owner.id}
-              version={calendarVersion}
-              onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
-            />
           </div>
 
           <Calendar
