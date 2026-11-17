@@ -31,6 +31,14 @@ const REPEATS = [
   ["weekly", "Weekly"],
 ];
 
+const TASKS_PER_PAGE = 5;
+
+function hourLabel(h) {
+  if (h === 24) return "12 AM (end of day)";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12} ${h < 12 ? "AM" : "PM"}`;
+}
+
 function App() {
   const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +46,7 @@ function App() {
   const [newPet, setNewPet] = useState(EMPTY_PET);
   const [selectedPetId, setSelectedPetId] = useState(null); // null = All Pets
   const [tasks, setTasks] = useState([]);
+  const [taskPage, setTaskPage] = useState(0);
   const [newTask, setNewTask] = useState(EMPTY_TASK);
   const [submitting, setSubmitting] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -45,6 +54,7 @@ function App() {
   const calendarRef = useRef(null);
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+  const [hours, setHours] = useState({ from: 0, to: 24 }); // hours of the day the calendar shows
   const [taskPetId, setTaskPetId] = useState(null); // pet picked in the manual form
   // The manual form's pet: the one picked there, else the filtered pet, else the first pet.
   const formPetId = taskPetId ?? selectedPetId ?? pets[0]?.id ?? null;
@@ -105,6 +115,12 @@ function App() {
     return () => { cancelled = true; };
   }, [owner, selectedPetId, tasksVersion]);
 
+  // Which pet the tasks list and the calendar show (null = all pets).
+  function pickPet(id) {
+    setSelectedPetId(id);
+    setTaskPage(0);
+  }
+
   async function handleAddPet(e) {
     e.preventDefault();
     await apiFetch(`/owners/${owner.id}/pets`, {
@@ -123,7 +139,7 @@ function App() {
 
   async function handleDeletePet(petId) {
     await apiFetch(`/pets/${petId}`, { method: "DELETE" });
-    if (selectedPetId === petId) setSelectedPetId(null);
+    if (selectedPetId === petId) pickPet(null);
     if (taskPetId === petId) setTaskPetId(null);
     refreshPets();
     refreshTasks();
@@ -181,6 +197,13 @@ function App() {
   }
 
   const petName = (id) => pets.find((p) => p.id === id)?.name ?? "Unknown";
+
+  // One page of the tasks list. The page is clamped, so deleting the last task on the
+  // last page lands on the new last page.
+  const pageCount = Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE));
+  const page = Math.min(taskPage, pageCount - 1);
+  const firstTask = page * TASKS_PER_PAGE;
+  const visibleTasks = tasks.slice(firstTask, firstTask + TASKS_PER_PAGE);
 
   const iso = (d) => {
     const x = new Date(d);
@@ -268,7 +291,7 @@ function App() {
           </form>
         </Card>
 
-        <div className="ak-row"> 
+        <div className="ak-row">
           <Card title="Add tasks with Akita">
             <div className="ak-stack">
               <ParsePanel
@@ -383,12 +406,12 @@ function App() {
 
         <Card title="Your tasks">
           <div className="ak-toolbar" role="group" aria-label="Show tasks for">
-            <Chip selected={selectedPetId === null} onClick={() => setSelectedPetId(null)}>
+            <Chip selected={selectedPetId === null} onClick={() => pickPet(null)}>
               All pets
             </Chip>
             {pets.map((pet) => (
               <Chip key={pet.id} selected={selectedPetId === pet.id}
-                onClick={() => setSelectedPetId(pet.id)}>
+                onClick={() => pickPet(pet.id)}>
                 {pet.name}
               </Chip>
             ))}
@@ -396,7 +419,7 @@ function App() {
 
           {tasks.length === 0 && <p className="ak-hint">No tasks yet. Add one above.</p>}
           <ul className="ak-list">
-            {tasks.map((task) => (
+            {visibleTasks.map((task) => (
               <li key={task.id}>
                 <div className="ak-task-main">
                   <div className="ak-task-name">{task.name}</div>
@@ -418,9 +441,46 @@ function App() {
               </li>
             ))}
           </ul>
+
+          {tasks.length > TASKS_PER_PAGE && (
+            <nav className="ak-pager" aria-label="Task pages">
+              <Button
+                size="sm"
+                aria-label="Previous page"
+                disabled={page === 0}
+                onClick={() => setTaskPage(page - 1)}
+              >
+                ←
+              </Button>
+              <span className="ak-pager-info">
+                {firstTask + 1}–{Math.min(firstTask + TASKS_PER_PAGE, tasks.length)} of {tasks.length}
+              </span>
+              <Button
+                size="sm"
+                aria-label="Next page"
+                disabled={page === pageCount - 1}
+                onClick={() => setTaskPage(page + 1)}
+              >
+                →
+              </Button>
+            </nav>
+          )}
         </Card>
 
         <Card title="Calendar">
+          <div className="ak-toolbar" role="group" aria-label="Show calendar for">
+            <span className="ak-field-label">Viewing</span>
+            <Chip selected={selectedPetId === null} onClick={() => pickPet(null)}>
+              All pets
+            </Chip>
+            {pets.map((pet) => (
+              <Chip key={pet.id} selected={selectedPetId === pet.id}
+                onClick={() => pickPet(pet.id)}>
+                {pet.name}
+              </Chip>
+            ))}
+          </div>
+
           <div className="ak-toolbar">
             <Button size="sm" onClick={() => showPreset("week")}>This week</Button>
             <Button size="sm" onClick={() => showPreset("two")}>Next 2 weeks</Button>
@@ -436,6 +496,44 @@ function App() {
             <Button size="sm" onClick={() => calendarRef.current.clearRange()}>Clear range</Button>
           </div>
 
+          <div className="ak-toolbar">
+            <label className="ak-inline">
+              Hours from
+              <select
+                value={hours.from}
+                onChange={(e) => {
+                  const from = Number(e.target.value);
+                  setHours({ from, to: Math.max(hours.to, from + 1) });
+                }}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{hourLabel(h)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="ak-inline">
+              to
+              <select
+                value={hours.to}
+                onChange={(e) => setHours({ ...hours, to: Number(e.target.value) })}
+              >
+                {Array.from({ length: 24 - hours.from }, (_, i) => hours.from + 1 + i).map((h) => (
+                  <option key={h} value={h}>{hourLabel(h)}</option>
+                ))}
+              </select>
+            </label>
+            <Button
+              size="sm"
+              disabled={hours.from === 0 && hours.to === 24}
+              onClick={() => setHours({ from: 0, to: 24 })}
+            >
+              All hours
+            </Button>
+          </div>
+          {(hours.from !== 0 || hours.to !== 24) && (
+            <p className="ak-hint">Tasks outside these hours are hidden in the week and day views.</p>
+          )}
+
           <div className="ak-stack">
             <SharePanel ownerId={owner.id} />
           </div>
@@ -445,6 +543,7 @@ function App() {
             ownerId={owner.id}
             petId={selectedPetId}
             version={calendarVersion}
+            hours={hours}
             onChanged={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
           />
         </Card>
