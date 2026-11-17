@@ -268,108 +268,110 @@ function App() {
           </form>
         </Card>
 
-        <Card title="Add tasks with Akita">
-          <div className="ak-stack">
-            <ParsePanel
-              ownerId={owner.id}
-              pets={pets}
-              selectedPetId={selectedPetId}
-              onSaved={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
-            />
-            <CalendarUpload
-              ownerId={owner.id}
-              onChanged={() => setCalendarVersion((v) => v + 1)}
-            />
-          </div>
-        </Card>
+        <div className="ak-row"> 
+          <Card title="Add tasks with Akita">
+            <div className="ak-stack">
+              <ParsePanel
+                ownerId={owner.id}
+                pets={pets}
+                selectedPetId={selectedPetId}
+                onSaved={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
+              />
+              <CalendarUpload
+                ownerId={owner.id}
+                onChanged={() => setCalendarVersion((v) => v + 1)}
+              />
+            </div>
+          </Card>
 
-        <Card title="Fill it in yourself">
-          {pets.length === 0 ? (
-            <p>Add a pet first, then you can add tasks.</p>
-          ) : (
-            <form className="ak-form" onSubmit={handleAddTask}>
-              <div className="ak-choice" role="group" aria-labelledby="mt-pet">
-                <span id="mt-pet" className="ak-field-label">Pet</span>
-                <div className="ak-chips">
-                  {pets.map((p) => (
-                    <Chip key={p.id} selected={p.id === formPetId} onClick={() => setTaskPetId(p.id)}>
-                      {p.name}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-
-              <Field label="Task name">
-                <input required value={newTask.name}
-                  onChange={(e) => setTaskField("name", e.target.value)} />
-              </Field>
-              <Field label="Kind">
-                <select value={newTask.category} onChange={(e) => setTaskField("category", e.target.value)}>
-                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </Field>
-
-              <div className="ak-choice" role="group" aria-labelledby="mt-priority">
-                <span id="mt-priority" className="ak-field-label">Priority</span>
-                <div className="ak-chips">
-                  {PRIORITIES.map((p) => (
-                    <Chip key={p} selected={newTask.priority === p}
-                      onClick={() => setTaskField("priority", p)}>
-                      {PRIORITY_STYLES[p]?.label ?? p}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-
-              <Field label="Minutes">
-                <input type="number" min="1" max="240" required value={newTask.duration_minutes}
-                  onChange={(e) => setTaskField("duration_minutes", e.target.value)} />
-              </Field>
-              <Field label="Start time">
-                <input type="time" required value={newTask.scheduled_time}
-                  onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
-              </Field>
-              <Field label="Starts on">
-                <input type="date" required value={newTask.start_date}
-                  onChange={(e) => setTaskField("start_date", e.target.value)} />
-              </Field>
-              <Field label="Ends on (optional)">
-                <input type="date" value={newTask.end_date}
-                  onChange={(e) => setTaskField("end_date", e.target.value)} />
-              </Field>
-
-              <div className="ak-choice" role="group" aria-labelledby="mt-repeat">
-                <span id="mt-repeat" className="ak-field-label">Repeats</span>
-                <div className="ak-chips">
-                  {REPEATS.map(([value, label]) => (
-                    <Chip key={value} selected={newTask.frequency === value}
-                      onClick={() => setTaskField("frequency", value)}>
-                      {label}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-              {newTask.frequency === "weekly" && (
-                <div className="ak-choice" role="group" aria-labelledby="mt-day">
-                  <span id="mt-day" className="ak-field-label">On</span>
+          <Card title="Fill it in yourself">
+            {pets.length === 0 ? (
+              <p>Add a pet first, then you can add tasks.</p>
+            ) : (
+              <form className="ak-form" onSubmit={handleAddTask}>
+                <div className="ak-choice" role="group" aria-labelledby="mt-pet">
+                  <span id="mt-pet" className="ak-field-label">Pet</span>
                   <div className="ak-chips">
-                    {DAYS.map((d) => (
-                      <Chip key={d} selected={newTask.scheduled_day === d}
-                        onClick={() => setTaskField("scheduled_day", d)}>
-                        {d}
+                    {pets.map((p) => (
+                      <Chip key={p.id} selected={p.id === formPetId} onClick={() => setTaskPetId(p.id)}>
+                        {p.name}
                       </Chip>
                     ))}
                   </div>
                 </div>
-              )}
 
-              <Button variant="primary" type="submit" disabled={submitting}>
-                {submitting ? "Adding..." : "Add task"}
-              </Button>
-              {taskError && <p className="ak-error" role="alert">{taskError}</p>}
-            </form>
-          )}
-        </Card>
+                <Field label="Task name">
+                  <input required value={newTask.name}
+                    onChange={(e) => setTaskField("name", e.target.value)} />
+                </Field>
+                <Field label="Kind">
+                  <select value={newTask.category} onChange={(e) => setTaskField("category", e.target.value)}>
+                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+
+                <div className="ak-choice" role="group" aria-labelledby="mt-priority">
+                  <span id="mt-priority" className="ak-field-label">Priority</span>
+                  <div className="ak-chips">
+                    {PRIORITIES.map((p) => (
+                      <Chip key={p} selected={newTask.priority === p}
+                        onClick={() => setTaskField("priority", p)}>
+                        {PRIORITY_STYLES[p]?.label ?? p}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+
+                <Field label="Minutes">
+                  <input type="number" min="1" max="240" required value={newTask.duration_minutes}
+                    onChange={(e) => setTaskField("duration_minutes", e.target.value)} />
+                </Field>
+                <Field label="Start time">
+                  <input type="time" required value={newTask.scheduled_time}
+                    onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
+                </Field>
+                <Field label="Starts on">
+                  <input type="date" required value={newTask.start_date}
+                    onChange={(e) => setTaskField("start_date", e.target.value)} />
+                </Field>
+                <Field label="Ends on (optional)">
+                  <input type="date" value={newTask.end_date}
+                    onChange={(e) => setTaskField("end_date", e.target.value)} />
+                </Field>
+
+                <div className="ak-choice" role="group" aria-labelledby="mt-repeat">
+                  <span id="mt-repeat" className="ak-field-label">Repeats</span>
+                  <div className="ak-chips">
+                    {REPEATS.map(([value, label]) => (
+                      <Chip key={value} selected={newTask.frequency === value}
+                        onClick={() => setTaskField("frequency", value)}>
+                        {label}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+                {newTask.frequency === "weekly" && (
+                  <div className="ak-choice" role="group" aria-labelledby="mt-day">
+                    <span id="mt-day" className="ak-field-label">On</span>
+                    <div className="ak-chips">
+                      {DAYS.map((d) => (
+                        <Chip key={d} selected={newTask.scheduled_day === d}
+                          onClick={() => setTaskField("scheduled_day", d)}>
+                          {d}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button variant="primary" type="submit" disabled={submitting}>
+                  {submitting ? "Adding..." : "Add task"}
+                </Button>
+                {taskError && <p className="ak-error" role="alert">{taskError}</p>}
+              </form>
+            )}
+          </Card>
+        </div>
 
         <Card title="Scheduling conflicts">
           <ConflictPanel

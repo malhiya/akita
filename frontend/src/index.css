@@ -50,7 +50,7 @@ body {
 }
 .ak-topbar-inner,
 .ak-main {
-  max-width: 1100px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 14px 24px;
 }
@@ -644,4 +644,17 @@ body {
   margin: 0;
   font-size: 14px;
   color: var(--ak-muted);
+}
+
+/* ---------- two cards side by side ---------- */
+.ak-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .ak-row {
+    grid-template-columns: 1fr;
+  }
 }
