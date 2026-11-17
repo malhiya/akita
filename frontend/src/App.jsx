@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Calendar from "./Calendar";
 import ParsePanel from "./ParsePanel";
 import ConflictPanel from "./ConflictPanel";
@@ -49,19 +49,11 @@ function App() {
   // The manual form's pet: the one picked there, else the filtered pet, else the first pet.
   const formPetId = taskPetId ?? selectedPetId ?? pets[0]?.id ?? null;
 
-  const fetchPets = useCallback(async () => {
-    const res = await apiFetch(`/owners/${owner.id}/pets`);
-    setPets(await res.json());
-  }, [owner]);
-
-  const fetchTasks = useCallback(async () => {
-    const path =
-      selectedPetId === null
-        ? `/owners/${owner.id}/tasks`
-        : `/pets/${selectedPetId}/tasks`;
-    const res = await apiFetch(path);
-    setTasks(await res.json());
-  }, [owner, selectedPetId]);
+  // Bumping a version re-runs the matching load effect below.
+  const [petsVersion, setPetsVersion] = useState(0);
+  const [tasksVersion, setTasksVersion] = useState(0);
+  const refreshPets = () => setPetsVersion((v) => v + 1);
+  const refreshTasks = () => setTasksVersion((v) => v + 1);
 
   useEffect(() => {
     async function loadOwner() {
@@ -86,12 +78,32 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (owner) fetchPets();
-  }, [owner, fetchPets]);
+    if (!owner) return;
+    let cancelled = false;
+    async function load() {
+      const res = await apiFetch(`/owners/${owner.id}/pets`);
+      const data = await res.json();
+      if (!cancelled) setPets(data);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [owner, petsVersion]);
 
   useEffect(() => {
-    if (owner) fetchTasks();
-  }, [owner, fetchTasks]);
+    if (!owner) return;
+    let cancelled = false;
+    async function load() {
+      const path =
+        selectedPetId === null
+          ? `/owners/${owner.id}/tasks`
+          : `/pets/${selectedPetId}/tasks`;
+      const res = await apiFetch(path);
+      const data = await res.json();
+      if (!cancelled) setTasks(data);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [owner, selectedPetId, tasksVersion]);
 
   async function handleAddPet(e) {
     e.preventDefault();
@@ -106,15 +118,15 @@ function App() {
       }),
     });
     setNewPet(EMPTY_PET);
-    fetchPets();
+    refreshPets();
   }
 
   async function handleDeletePet(petId) {
     await apiFetch(`/pets/${petId}`, { method: "DELETE" });
     if (selectedPetId === petId) setSelectedPetId(null);
     if (taskPetId === petId) setTaskPetId(null);
-    await fetchPets();
-    fetchTasks();
+    refreshPets();
+    refreshTasks();
     setCalendarVersion((v) => v + 1);
   }
 
@@ -144,7 +156,7 @@ function App() {
       }
       setNewTask(EMPTY_TASK);
       setCalendarVersion((v) => v + 1);
-      fetchTasks();
+      refreshTasks();
     } finally {
       setSubmitting(false);
     }
@@ -152,7 +164,7 @@ function App() {
 
   async function handleDeleteTask(taskId) {
     await apiFetch(`/tasks/${taskId}`, { method: "DELETE" });
-    fetchTasks();
+    refreshTasks();
     setCalendarVersion((v) => v + 1);
   }
 
@@ -262,7 +274,7 @@ function App() {
               ownerId={owner.id}
               pets={pets}
               selectedPetId={selectedPetId}
-              onSaved={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+              onSaved={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
             />
             <CalendarUpload
               ownerId={owner.id}
@@ -363,7 +375,7 @@ function App() {
           <ConflictPanel
             ownerId={owner.id}
             version={calendarVersion}
-            onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+            onChanged={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
           />
         </Card>
 
@@ -431,7 +443,7 @@ function App() {
             ownerId={owner.id}
             petId={selectedPetId}
             version={calendarVersion}
-            onChanged={() => { setCalendarVersion((v) => v + 1); fetchTasks(); }}
+            onChanged={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
           />
         </Card>
       </main>
