@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CATEGORIES, PRIORITIES, DAYS, formatError } from "./taskOptions";
-import { PRIORITY_STYLES } from "./priorities";
+import PriorityBadge from "./PriorityBadge";
 import { apiFetch } from "./api";
 import { Button, Field } from "./ui";
 
@@ -30,18 +30,6 @@ function describe(d) {
   return `daily from ${d.start_date}`;
 }
 
-function PriorityBadge({ priority }) {
-  const s = PRIORITY_STYLES[priority];
-  if (!s) return <span>{priority}</span>;
-  return (
-    <span
-      className="ak-badge"
-      style={{ background: s.bg, borderColor: s.border, color: s.text }}
-    >
-      {s.marker} {s.label}
-    </span>
-  );
-}
 
 export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
   const [text, setText] = useState("");
