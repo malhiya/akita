@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatError } from "./taskOptions";
 import { apiFetch } from "./api";
+import { Button } from "./ui";
 
 const WINDOW_DAYS = 120;      // how far ahead an uploaded calendar is kept
 const MAX_BYTES = 2_000_000;
@@ -24,6 +25,18 @@ async function errorText(res) {
   }
 }
 
+// How many busy periods are loaded, or null if we couldn't find out.
+async function fetchPeriods(ownerId) {
+  const today = new Date();
+  const params = new URLSearchParams({ start: ymd(today), end: ymd(addDays(today, WINDOW_DAYS)) });
+  try {
+    const res = await apiFetch(`/owners/${ownerId}/busy?${params}`);
+    return res.ok ? (await res.json()).length : null;
+  } catch {
+    return null;   // status stays unknown; uploading still works
+  }
+}
+
 export default function CalendarUpload({ ownerId, onChanged }) {
   const [periods, setPeriods] = useState(null);   // null = not known yet
   const [message, setMessage] = useState("");
@@ -31,19 +44,14 @@ export default function CalendarUpload({ ownerId, onChanged }) {
   const [working, setWorking] = useState(false);
   const inputRef = useRef(null);
 
-  async function loadStatus() {
-    const today = new Date();
-    const params = new URLSearchParams({ start: ymd(today), end: ymd(addDays(today, WINDOW_DAYS)) });
-    try {
-      const res = await apiFetch(`/owners/${ownerId}/busy?${params}`);
-      if (res.ok) setPeriods((await res.json()).length);
-    } catch {
-      /* status stays unknown; uploading still works */
-    }
-  }
-
   useEffect(() => {
-    loadStatus();
+    let cancelled = false;
+    fetchPeriods(ownerId).then((n) => {
+      if (!cancelled && n !== null) setPeriods(n);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [ownerId]);
 
   async function handleFile(e) {
@@ -74,7 +82,8 @@ export default function CalendarUpload({ ownerId, onChanged }) {
       }
       const data = await res.json();
       setMessage(`Imported ${data.blocks} busy period${data.blocks === 1 ? "" : "s"} through ${data.end}.`);
-      await loadStatus();
+      const n = await fetchPeriods(ownerId);
+      if (n !== null) setPeriods(n);
       onChanged?.();
     } catch {
       setError("Couldn't read or upload that file.");
@@ -102,22 +111,17 @@ export default function CalendarUpload({ ownerId, onChanged }) {
     }
   }
 
-  const box = {
-    border: "1px solid #d1d5db", background: "#f9fafb", color: "#111", borderRadius: 6,
-    padding: "0.5rem 0.9rem", margin: "0.5rem 0", textAlign: "left",
-  };
-
   return (
-    <div style={box}>
-      <strong>Your calendar (optional)</strong>
-      <p style={{ margin: "0.3rem 0", color: "#444" }}>
+    <div className="ak-panel">
+      <strong className="ak-panel-title">Your calendar (optional)</strong>
+      <p>
         Upload an .ics export of your own calendar and fix suggestions will steer pet tasks away from your busy
         times. Only start and end times are kept: event titles and details are never stored or sent to the AI.
         It covers the next {WINDOW_DAYS} days, so upload again to refresh.
       </p>
-      <details style={{ color: "#444", margin: "0.3rem 0" }}>
+      <details>
         <summary>How do I get an .ics file?</summary>
-        <ul style={{ margin: "0.3rem 0" }}>
+        <ul>
           <li>Google Calendar: Settings, then Import &amp; export, then Export. It downloads a .zip; unzip it and use one of the .ics files inside.</li>
           <li>Apple Calendar: File, then Export, then Export…</li>
           <li>Outlook: publish or export the calendar as an .ics file.</li>
@@ -129,16 +133,24 @@ export default function CalendarUpload({ ownerId, onChanged }) {
         accept=".ics,text/calendar"
         onChange={handleFile}
         disabled={working}
-      />{" "}
-      {periods > 0 && (
-        <>
-          <span style={{ color: "#166534" }}>{periods} busy periods loaded.</span>{" "}
-          <button onClick={handleRemove} disabled={working}>Remove calendar</button>
-        </>
-      )}
-      {working && <span> Working...</span>}
-      {message && <div style={{ color: "#166534" }}>{message}</div>}
-      {error && <div style={{ color: "#b91c1c" }}>{error}</div>}
+        hidden
+      />
+      <div className="ak-toolbar">
+        <Button onClick={() => inputRef.current?.click()} disabled={working}>
+          Upload my calendar
+        </Button>
+        {periods > 0 && (
+          <>
+            <span className="ak-ok">{periods} busy periods loaded.</span>
+            <Button size="sm" variant="danger" onClick={handleRemove} disabled={working}>
+              Remove calendar
+            </Button>
+          </>
+        )}
+        {working && <span>Working...</span>}
+      </div>
+      {message && <div className="ak-ok" role="status">{message}</div>}
+      {error && <div className="ak-error" role="alert">{error}</div>}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CATEGORIES, PRIORITIES, DAYS, formatError } from "./taskOptions";
 import { PRIORITY_STYLES } from "./priorities";
 import { apiFetch } from "./api";
+import { Button, Field } from "./ui";
 
 const MAX_CHARS = 2000; // matches the backend limit
 const FIELD_LABELS = {
@@ -11,8 +12,6 @@ const FIELD_LABELS = {
   scheduled_day: "day",
   start_date: "start date",
 };
-const muted = { fontSize: 13, color: "#555", marginTop: 4 };
-const bad = { color: "#b91c1c" };
 
 // The user's local date, not the server's: "tomorrow" must mean their tomorrow.
 function todayLocal() {
@@ -35,8 +34,10 @@ function PriorityBadge({ priority }) {
   const s = PRIORITY_STYLES[priority];
   if (!s) return <span>{priority}</span>;
   return (
-    <span style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.text,
-                   borderRadius: 4, padding: "0 6px", fontSize: 13 }}>
+    <span
+      className="ak-badge"
+      style={{ background: s.bg, borderColor: s.border, color: s.text }}
+    >
       {s.marker} {s.label}
     </span>
   );
@@ -166,70 +167,74 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
   }
 
   const selectedPetName = pets.find((p) => p.id === selectedPetId)?.name;
+  const addCount = `Add ${ready.length} task${ready.length === 1 ? "" : "s"}`;
 
   return (
     <div>
       <textarea
+        className="ak-note"
         rows={5}
-        cols={60}
         maxLength={MAX_CHARS}
+        aria-label="Tasks, one per line"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={"give Luna her medication at 8am\nwalk Max every morning for 30 minutes\nbrush Whiskers every Saturday"}
       />
-      <div style={muted}>
+      <div className="ak-meta">
         {text.length}/{MAX_CHARS} · one task per line
         {selectedPetName && ` · lines without a pet name go to ${selectedPetName}`}
       </div>
-      <button onClick={handlePreview} disabled={loading || saving || !text.trim()}>
-        {loading ? "Parsing..." : "Preview tasks"}
-      </button>
+      <Button variant="primary" onClick={handlePreview} disabled={loading || saving || !text.trim()}>
+        {loading ? "Parsing..." : "Preview with Akita"}
+      </Button>
 
-      {error && <p style={bad}>{error}</p>}
-      {message && <p>{message}</p>}
+      {error && <p className="ak-error" role="alert">{error}</p>}
+      {message && <p className="ak-status" role="status">{message}</p>}
       {notice && (
-        <p style={{ background: "#fef9c3", border: "1px solid #a16207", padding: 8 }}>
-          ⚠ {notice} Categories and priorities below came from keyword matching, so check them.
+        <p className="ak-notice" role="status">
+          {notice} Categories and priorities below came from keyword matching, so check them.
         </p>
       )}
-      {warnings.map((w, i) => <p key={i} style={muted}>{w}</p>)}
+      {warnings.map((w, i) => <p key={i} className="ak-meta">{w}</p>)}
 
       {drafts.length > 0 && (
         <>
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul className="ak-drafts">
             {drafts.map((d) => (
-              <li key={d.key} style={{ border: "1px solid #ccc", borderRadius: 6, padding: 10,
-                                       margin: "8px 0", opacity: d.include ? 1 : 0.6 }}>
-                <label>
+              <li key={d.key} className={`ak-draft${d.include ? "" : " is-off"}`}>
+                <label className="ak-draft-title">
                   <input type="checkbox" checked={d.include} disabled={d.pet_id === null || saving}
-                    onChange={(e) => update(d.key, { include: e.target.checked })} />{" "}
-                  <strong>{d.name}</strong>
+                    onChange={(e) => update(d.key, { include: e.target.checked })} />
+                  <span>{d.name}</span>
                 </label>
 
-                <div>
-                  <select value={d.pet_id ?? ""} onChange={(e) => setPet(d.key, e.target.value)}>
+                <div className="ak-draft-line">
+                  <select aria-label={`Pet for ${d.name}`} value={d.pet_id ?? ""}
+                    onChange={(e) => setPet(d.key, e.target.value)}>
                     <option value="">Choose a pet…</option>
                     {pets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>{" "}
-                  {d.category} · <PriorityBadge priority={d.priority} /> · {d.scheduled_time} for{" "}
-                  {d.duration_minutes} min · {describe(d)}
+                  </select>
+                  <span>
+                    {d.category} · <PriorityBadge priority={d.priority} /> · {d.scheduled_time} for{" "}
+                    {d.duration_minutes} min · {describe(d)}
+                  </span>
                 </div>
 
                 {d.assumed.length > 0 && (
-                  <div style={muted}>
+                  <div className="ak-draft-note is-warn">
                     Guessed, not from your text: {d.assumed.map((f) => FIELD_LABELS[f] ?? f).join(", ")}. Check these.
                   </div>
                 )}
-                <div style={muted}>
+                <div className="ak-draft-note">
                   {d.classification_source === "ai" ? "AI's explanation" : "Keyword match"}: {d.reason}
                 </div>
                 {d.wasUnassigned && d.pet_id !== null && (
-                  <div style={muted}>
+                  <div className="ak-draft-note">
                     Priority was chosen without this pet's health notes, so double-check it.
                   </div>
                 )}
                 {d.rules_consulted.length > 0 && (
-                  <details style={muted}>
+                  <details>
                     <summary>Rules consulted ({d.rules_consulted.length})</summary>
                     <ul>
                       {d.rules_consulted.map((r, i) => (
@@ -240,40 +245,60 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
                     </ul>
                   </details>
                 )}
-                {d.saveError && <div style={bad}>Couldn't save: {d.saveError}</div>}
+                {d.saveError && <div className="ak-error">Couldn't save: {d.saveError}</div>}
 
-                <div style={{ marginTop: 6 }}>
-                  <button onClick={() => update(d.key, { editing: !d.editing })}>
+                <div className="ak-draft-actions">
+                  <Button size="sm" aria-label={`${d.editing ? "Finish editing" : "Edit"} ${d.name}`}
+                    onClick={() => update(d.key, { editing: !d.editing })}>
                     {d.editing ? "Done" : "Edit"}
-                  </button>
-                  <button onClick={() => remove(d.key)}>Remove</button>
+                  </Button>
+                  <Button size="sm" variant="danger" aria-label={`Remove ${d.name}`}
+                    onClick={() => remove(d.key)}>
+                    Remove
+                  </Button>
                 </div>
 
                 {d.editing && (
-                  <div style={{ marginTop: 6 }}>
-                    <input value={d.name} onChange={(e) => update(d.key, { name: e.target.value })} />
-                    <select value={d.category} onChange={(e) => update(d.key, { category: e.target.value })}>
-                      {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                    </select>
-                    <select value={d.priority} onChange={(e) => update(d.key, { priority: e.target.value })}>
-                      {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-                    </select>
-                    <input type="number" min="1" max="240" value={d.duration_minutes}
-                      onChange={(e) => edit(d.key, "duration_minutes", e.target.value)} /> min
-                    <input type="time" value={d.scheduled_time}
-                      onChange={(e) => edit(d.key, "scheduled_time", e.target.value)} />
-                    <label>Start <input type="date" value={d.start_date}
-                      onChange={(e) => edit(d.key, "start_date", e.target.value)} /></label>
-                    <select value={d.frequency} onChange={(e) => edit(d.key, "frequency", e.target.value)}>
-                      <option value="once">Once</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                    </select>
-                    {d.frequency === "weekly" && (
-                      <select value={d.scheduled_day ?? DAYS[0]}
-                        onChange={(e) => edit(d.key, "scheduled_day", e.target.value)}>
-                        {DAYS.map((day) => <option key={day}>{day}</option>)}
+                  <div className="ak-draft-edit">
+                    <Field label="Task name">
+                      <input value={d.name} onChange={(e) => update(d.key, { name: e.target.value })} />
+                    </Field>
+                    <Field label="Kind">
+                      <select value={d.category} onChange={(e) => update(d.key, { category: e.target.value })}>
+                        {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
                       </select>
+                    </Field>
+                    <Field label="Priority">
+                      <select value={d.priority} onChange={(e) => update(d.key, { priority: e.target.value })}>
+                        {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Minutes">
+                      <input type="number" min="1" max="240" value={d.duration_minutes}
+                        onChange={(e) => edit(d.key, "duration_minutes", e.target.value)} />
+                    </Field>
+                    <Field label="Start time">
+                      <input type="time" value={d.scheduled_time}
+                        onChange={(e) => edit(d.key, "scheduled_time", e.target.value)} />
+                    </Field>
+                    <Field label="Starts on">
+                      <input type="date" value={d.start_date}
+                        onChange={(e) => edit(d.key, "start_date", e.target.value)} />
+                    </Field>
+                    <Field label="Repeats">
+                      <select value={d.frequency} onChange={(e) => edit(d.key, "frequency", e.target.value)}>
+                        <option value="once">Once</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
+                    </Field>
+                    {d.frequency === "weekly" && (
+                      <Field label="Day">
+                        <select value={d.scheduled_day ?? DAYS[0]}
+                          onChange={(e) => edit(d.key, "scheduled_day", e.target.value)}>
+                          {DAYS.map((day) => <option key={day}>{day}</option>)}
+                        </select>
+                      </Field>
                     )}
                   </div>
                 )}
@@ -281,12 +306,15 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
             ))}
           </ul>
 
-          <button onClick={handleSave} disabled={saving || ready.length === 0}>
-            {saving ? "Adding..." : `Add ${ready.length} task${ready.length === 1 ? "" : "s"}`}
-          </button>
-          <button onClick={() => { setDrafts([]); setWarnings([]); }} disabled={saving}>
-            Discard all
-          </button>
+          <div className="ak-actions">
+            <p className="ak-actions-note">Nothing is saved until you click "{addCount}".</p>
+            <Button onClick={() => { setDrafts([]); setWarnings([]); }} disabled={saving}>
+              Discard all
+            </Button>
+            <Button variant="primary" onClick={handleSave} disabled={saving || ready.length === 0}>
+              {saving ? "Adding..." : addCount}
+            </Button>
+          </div>
         </>
       )}
     </div>
