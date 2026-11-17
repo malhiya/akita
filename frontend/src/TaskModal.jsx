@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { PRIORITY_STYLES } from "./priorities";
 import { CATEGORIES, PRIORITIES, DAYS, describeRecurrence, formatError } from "./taskOptions";
 import { apiFetch } from "./api";
+import { Button, Field, Modal } from "./ui";
+import PriorityBadge from "./PriorityBadge";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -73,12 +74,6 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
     loadPets();
     return () => { cancelled = true; };
   }, [ownerId]);
-
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const setField = (field, value) => setForm({ ...form, [field]: value });
 
@@ -190,137 +185,139 @@ export default function TaskModal({ ownerId, taskId, taskIds, petName, petNames,
   }
 
   const scopePicker = grouped && (
-    <fieldset style={{ margin: "0.6rem 0", padding: "0.4rem 0.7rem" }}>
+    <fieldset className="ak-fieldset">
       <legend>Applies to</legend>
-      <label style={{ display: "block" }}>
-        <input type="radio" checked={scope === "all"} onChange={() => setScope("all")} />{" "}
+      <label>
+        <input type="radio" name="task-scope" checked={scope === "all"} onChange={() => setScope("all")} />
         All pets ({petName})
       </label>
-      <label style={{ display: "block" }}>
-        <input type="radio" checked={scope === "one"} onChange={() => setScope("one")} />{" "}
-        Just{" "}
-        <select value={onePet} onChange={(e) => { setOnePet(Number(e.target.value)); setScope("one"); }}>
+      <label>
+        <input type="radio" name="task-scope" checked={scope === "one"} onChange={() => setScope("one")} />
+        Just
+        <select
+          aria-label="Choose a pet"
+          value={onePet}
+          onChange={(e) => { setOnePet(Number(e.target.value)); setScope("one"); }}
+        >
           {names.map((n, i) => <option key={ids[i]} value={i}>{n}</option>)}
         </select>
       </label>
     </fieldset>
   );
 
-  const backdrop = {
-    position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000,
-    display: "flex", alignItems: "center", justifyContent: "center",
-  };
-  const panel = {
-    background: "#fff", color: "#111", padding: "1rem 1.25rem", borderRadius: 8,
-    width: "min(440px, 92vw)", maxHeight: "90vh", overflow: "auto", textAlign: "left",
-  };
-  const row = { display: "block", margin: "0.4rem 0" };
+  let title = "Task";
+  let body = null;
+  let footer = null;
+
+  if (!task && !error) {
+    body = <p>Loading...</p>;
+  } else if (!task) {
+    body = <p className="ak-error" role="alert">{error}</p>;
+    footer = <Button onClick={onClose}>Close</Button>;
+  } else if (mode === "view") {
+    title = grouped && eventName ? eventName : task.name;
+    body = (
+      <>
+        <PriorityBadge priority={task.priority} />
+        <dl className="ak-details">
+          <dt>Pet</dt><dd>{petName}</dd>
+          <dt>Kind</dt><dd>{task.category}</dd>
+          <dt>Time</dt><dd>{task.scheduled_time}, {task.duration_minutes} min</dd>
+          <dt>Repeats</dt><dd>{describeRecurrence(task.rrule)}</dd>
+          <dt>Starts</dt><dd>{prettyDate(task.start_date)}</dd>
+          <dt>Ends</dt><dd>{task.end_date ? prettyDate(task.end_date) : "No end date"}</dd>
+        </dl>
+        <p className="ak-hint">You clicked the occurrence on {prettyDate(occursOn)}.</p>
+        {scopePicker}
+        {availablePets.length > 0 && (
+          <div className="ak-toolbar">
+            <label className="ak-inline">
+              Also do this for
+              <select value={addPetId} onChange={(e) => setAddPetId(e.target.value)}>
+                <option value="">Choose a pet…</option>
+                {availablePets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <Button size="sm" onClick={handleAddPet} disabled={!addPetId || adding}>
+              {adding ? "Adding..." : "Add pet"}
+            </Button>
+          </div>
+        )}
+        {error && <p className="ak-error" role="alert">{error}</p>}
+      </>
+    );
+    footer = (
+      <>
+        <Button onClick={startEdit}>Edit</Button>
+        <Button variant="danger" onClick={handleDelete}>Delete</Button>
+        <Button onClick={onClose}>Close</Button>
+      </>
+    );
+  } else if (form) {
+    title = `Edit task (${petName})`;
+    body = (
+      <form id="task-edit-form" className="ak-form" onSubmit={handleSave}>
+        <p className="ak-form-note">Changes apply to every occurrence of this task, not just one day.</p>
+        <Field label="Name">
+          <input required value={form.name} onChange={(e) => setField("name", e.target.value)} />
+        </Field>
+        <Field label="Kind">
+          <select value={form.category} onChange={(e) => setField("category", e.target.value)}>
+            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Priority">
+          <select value={form.priority} onChange={(e) => setField("priority", e.target.value)}>
+            {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+          </select>
+        </Field>
+        <Field label="Minutes">
+          <input type="number" min="1" max="240" required value={form.duration_minutes}
+            onChange={(e) => setField("duration_minutes", e.target.value)} />
+        </Field>
+        <Field label="Time">
+          <input type="time" required value={form.scheduled_time}
+            onChange={(e) => setField("scheduled_time", e.target.value)} />
+        </Field>
+        <Field label="Starts">
+          <input type="date" required value={form.start_date}
+            onChange={(e) => setField("start_date", e.target.value)} />
+        </Field>
+        <Field label="Ends (optional)">
+          <input type="date" value={form.end_date}
+            onChange={(e) => setField("end_date", e.target.value)} />
+        </Field>
+        <Field label="Repeats">
+          <select value={form.frequency} onChange={(e) => setField("frequency", e.target.value)}>
+            <option value="once">Once</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </Field>
+        {form.frequency === "weekly" && (
+          <Field label="On">
+            <select value={form.scheduled_day} onChange={(e) => setField("scheduled_day", e.target.value)}>
+              {DAYS.map((d) => <option key={d}>{d}</option>)}
+            </select>
+          </Field>
+        )}
+        {scopePicker}
+        {error && <p className="ak-error" role="alert">{error}</p>}
+      </form>
+    );
+    footer = (
+      <>
+        <Button onClick={() => { setMode("view"); setError(""); }}>Cancel</Button>
+        <Button variant="primary" type="submit" form="task-edit-form" disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </>
+    );
+  }
 
   return (
-    <div style={backdrop} onClick={onClose}>
-      <div style={panel} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        {!task && !error && <p>Loading...</p>}
-        {!task && error && (
-          <>
-            <p>{error}</p>
-            <button onClick={onClose}>Close</button>
-          </>
-        )}
-
-        {task && mode === "view" && (
-          <>
-            <h3 style={{ marginTop: 0 }}>{grouped && eventName ? eventName : task.name}</h3>
-            <p style={{
-              display: "inline-block", margin: "0 0 0.5rem", padding: "2px 8px", borderRadius: 4,
-              background: PRIORITY_STYLES[task.priority].bg,
-              border: `1px solid ${PRIORITY_STYLES[task.priority].border}`,
-              color: PRIORITY_STYLES[task.priority].text,
-            }}>
-              {PRIORITY_STYLES[task.priority].marker} {PRIORITY_STYLES[task.priority].label}
-            </p>
-            <p><strong>Pet:</strong> {petName}</p>
-            <p><strong>Category:</strong> {task.category}</p>
-            <p><strong>Time:</strong> {task.scheduled_time}, {task.duration_minutes} min</p>
-            <p><strong>Repeats:</strong> {describeRecurrence(task.rrule)}</p>
-            <p><strong>Starts:</strong> {prettyDate(task.start_date)}</p>
-            <p><strong>Ends:</strong> {task.end_date ? prettyDate(task.end_date) : "No end date"}</p>
-            <p style={{ color: "#555" }}>You clicked the occurrence on {prettyDate(occursOn)}.</p>
-            {scopePicker}
-            {availablePets.length > 0 && (
-              <div style={{ margin: "0.6rem 0" }}>
-                <label>
-                  Also do this for:{" "}
-                  <select value={addPetId} onChange={(e) => setAddPetId(e.target.value)}>
-                    <option value="">Choose a pet…</option>
-                    {availablePets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </label>{" "}
-                <button onClick={handleAddPet} disabled={!addPetId || adding}>
-                  {adding ? "Adding..." : "Add pet"}
-                </button>
-              </div>
-            )}
-            {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-            <button onClick={startEdit}>Edit</button>{" "}
-            <button onClick={handleDelete}>Delete</button>{" "}
-            <button onClick={onClose}>Close</button>
-          </>
-        )}
-
-        {task && mode === "edit" && form && (
-          <form onSubmit={handleSave}>
-            <h3 style={{ marginTop: 0 }}>Edit task ({petName})</h3>
-            <p style={{ color: "#555" }}>Changes apply to every occurrence of this task, not just one day.</p>
-            <label style={row}>Name
-              <input required value={form.name} onChange={(e) => setField("name", e.target.value)} />
-            </label>
-            <label style={row}>Category
-              <select value={form.category} onChange={(e) => setField("category", e.target.value)}>
-                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </label>
-            <label style={row}>Priority
-              <select value={form.priority} onChange={(e) => setField("priority", e.target.value)}>
-                {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-              </select>
-            </label>
-            <label style={row}>Duration (min)
-              <input type="number" min="1" max="240" required value={form.duration_minutes}
-                onChange={(e) => setField("duration_minutes", e.target.value)} />
-            </label>
-            <label style={row}>Time
-              <input type="time" required value={form.scheduled_time}
-                onChange={(e) => setField("scheduled_time", e.target.value)} />
-            </label>
-            <label style={row}>Starts
-              <input type="date" required value={form.start_date}
-                onChange={(e) => setField("start_date", e.target.value)} />
-            </label>
-            <label style={row}>Ends (optional)
-              <input type="date" value={form.end_date}
-                onChange={(e) => setField("end_date", e.target.value)} />
-            </label>
-            <label style={row}>Repeats
-              <select value={form.frequency} onChange={(e) => setField("frequency", e.target.value)}>
-                <option value="once">Once</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-              </select>
-            </label>
-            {form.frequency === "weekly" && (
-              <label style={row}>On
-                <select value={form.scheduled_day} onChange={(e) => setField("scheduled_day", e.target.value)}>
-                  {DAYS.map((d) => <option key={d}>{d}</option>)}
-                </select>
-              </label>
-            )}
-            {scopePicker}
-            {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save"}</button>{" "}
-            <button type="button" onClick={() => { setMode("view"); setError(""); }}>Cancel</button>
-          </form>
-        )}
-      </div>
-    </div>
+    <Modal open onClose={onClose} title={title} footer={footer}>
+      {body}
+    </Modal>
   );
 }
