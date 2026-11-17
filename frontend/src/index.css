@@ -703,3 +703,78 @@ body {
   border-bottom: 1px solid var(--ak-border);
   font-weight: 800;
 }
+
+/* ---------- section headings, switcher, priority square ---------- */
+.ak-app .ak-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ak-app .ak-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ak-app .ak-section-title {
+  margin: 0;
+  font: 600 34px/1.1 var(--ak-font-head);
+}
+.ak-app .ak-section-sub {
+  margin: 6px 0 0;
+  font-size: 17px;
+  color: var(--ak-muted);
+}
+.ak-app .ak-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: #efe8da;
+  border-radius: 28px;
+}
+.ak-app .ak-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--ak-ink);
+  font: 700 15px var(--ak-font-body);
+  cursor: pointer;
+}
+.ak-app .ak-seg-btn.has-icon {
+  padding: 0 18px 0 8px;
+}
+.ak-app .ak-seg-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.ak-app .ak-seg-btn.is-selected {
+  background: #fff;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(43, 42, 51, 0.14);
+}
+.ak-app .ak-seg-btn:focus-visible {
+  outline: 3px solid var(--ak-sage);
+  outline-offset: 2px;
+}
+.ak-app .ak-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-radius: 5px;
+}
+.ak-app .ak-pill {
+  padding: 2px 10px;
+  border-radius: 12px;
+  color: var(--ak-ink);
+  font-size: 13px;
+  font-weight: 800;
+}

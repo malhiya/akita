@@ -29,6 +29,51 @@ export function Card({ title, className = "", children }) {
   );
 }
 
+// A big page heading with a subtitle, and an optional control on the right.
+export function Section({ title, subtitle, actions, children }) {
+  const titleId = useId();
+  return (
+    <section className="ak-section" aria-labelledby={titleId}>
+      <div className="ak-section-head">
+        <div>
+          <h2 id={titleId} className="ak-section-title">
+            {title}
+          </h2>
+          {subtitle && <p className="ak-section-sub">{subtitle}</p>}
+        </div>
+        {actions && <div className="ak-section-actions">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// A pill-shaped switcher. options: [{ value, label, icon? }]; one value is selected.
+export function Segmented({ label, options, value, onChange }) {
+  return (
+    <div role="group" aria-label={label} className="ak-seg">
+      {options.map((o) => {
+        const selected = o.value === value;
+        const cls = ["ak-seg-btn", selected ? "is-selected" : "", o.icon ? "has-icon" : ""]
+          .filter(Boolean)
+          .join(" ");
+        return (
+          <button
+            key={String(o.value)}
+            type="button"
+            aria-pressed={selected}
+            className={cls}
+            onClick={() => onChange(o.value)}
+          >
+            {o.icon}
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // A label around one input, with an optional hint or error underneath.
 export function Field({ label, hint, error, children }) {
   const noteId = useId();
