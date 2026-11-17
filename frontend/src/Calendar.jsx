@@ -53,7 +53,7 @@ function toBusyEvent(b, i) {
   };
 }
 
-const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChanged }, ref) {
+const Calendar = forwardRef(function Calendar({ ownerId, petId, version, hours = { from: 0, to: 24 }, onChanged }, ref) {
   const calRef = useRef(null);
   const [events, setEvents] = useState([]);
   const [busyEvents, setBusyEvents] = useState([]);
@@ -142,6 +142,9 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, onChang
       <FullCalendar
         ref={calRef}
         firstDay={1}
+        slotMinTime={`${String(hours.from).padStart(2, "0")}:00:00`}
+        slotMaxTime={`${String(hours.to).padStart(2, "0")}:00:00`}
+        allDaySlot={false}
         plugins={[dayGridPlugin, timeGridPlugin]}
         initialView="timeGridWeek"
         views={{ customRange: { type: "timeGrid" } }}
