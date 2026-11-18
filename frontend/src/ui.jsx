@@ -7,23 +7,47 @@ export function Button({ variant = "secondary", size, type = "button", className
   return <button type={type} className={cls} {...props} />;
 }
 
-export function Chip({ selected = false, className = "", ...props }) {
-  const cls = ["ak-chip", selected ? "is-selected" : "", className].filter(Boolean).join(" ");
-  return <button type="button" aria-pressed={selected} className={cls} {...props} />;
+// A toggle button. An optional icon (a pet circle, a priority square) sits before the label.
+export function Chip({ selected = false, icon, className = "", children, ...props }) {
+  const cls = ["ak-chip", selected ? "is-selected" : "", icon ? "has-icon" : "", className]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <button type="button" aria-pressed={selected} className={cls} {...props}>
+      {icon}
+      {children}
+    </button>
+  );
 }
 
-export function Card({ title, className = "", children }) {
+// A white card. With an icon, the title gets a colored circle beside it (and becomes an h3).
+export function Card({ title, icon, iconColor, className = "", children }) {
   const titleId = useId();
+  let heading = null;
+  if (title && icon) {
+    heading = (
+      <div className="ak-card-head">
+        <span className="ak-icon-circle" aria-hidden="true" style={{ background: iconColor }}>
+          {icon}
+        </span>
+        <h3 id={titleId} className="ak-card-title">
+          {title}
+        </h3>
+      </div>
+    );
+  } else if (title) {
+    heading = (
+      <h2 id={titleId} className="ak-card-title">
+        {title}
+      </h2>
+    );
+  }
   return (
     <section
       className={["ak-card", className].filter(Boolean).join(" ")}
       aria-labelledby={title ? titleId : undefined}
     >
-      {title && (
-        <h2 id={titleId} className="ak-card-title">
-          {title}
-        </h2>
-      )}
+      {heading}
       {children}
     </section>
   );

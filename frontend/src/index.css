@@ -852,3 +852,55 @@ body {
   gap: 10px;
   font-weight: 800;
 }
+
+/* ---------- card icons, chip icons, weekday buttons ---------- */
+.ak-app .ak-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ak-app .ak-icon-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+.ak-app .ak-card-head .ak-card-title {
+  margin: 0;
+  font: 600 24px var(--ak-font-head);
+}
+.ak-app .ak-chip.has-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ak-app .ak-chip.ak-chip-avatar {
+  padding-left: 8px;
+}
+.ak-app .ak-chip.ak-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+}
+.ak-app .ak-chip.ak-day.is-selected {
+  background: var(--ak-sage);
+  border-color: var(--ak-sage);
+  color: #fff;
+  font-weight: 800;
+}
+.ak-app .ak-btn-block {
+  width: 100%;
+  height: 52px;
+  border-radius: 26px;
+  font-size: 17px;
+  font-weight: 800;
+}
