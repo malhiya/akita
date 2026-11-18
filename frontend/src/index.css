@@ -904,3 +904,25 @@ body {
   font-size: 17px;
   font-weight: 800;
 }
+
+/* ---------- form fields in pairs ---------- */
+.ak-app .ak-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.ak-app .ak-fields .ak-field,
+.ak-app .ak-fields .ak-field-control {
+  min-width: 0;
+}
+.ak-app .ak-fields input,
+.ak-app .ak-fields select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+@media (max-width: 330px) {
+  .ak-app .ak-fields {
+    grid-template-columns: 1fr;
+  }
+}

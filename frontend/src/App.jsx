@@ -7,9 +7,10 @@ import SharePanel from "./SharePanel";
 import TopBar from "./TopBar";
 import TaskModal from "./TaskModal";
 import Avatar from "./Avatar";
+import { NoteIcon, PencilIcon } from "./icons";
 import { PriorityDot, PriorityPill } from "./PriorityBadge";
 import { Button, Card, Chip, Field, Section, Segmented } from "./ui";
-import { CATEGORIES, PRIORITIES, DAYS, describeSchedule, formatError } from "./taskOptions";
+import { CATEGORIES, DAYS, describeSchedule, formatError } from "./taskOptions";
 import { PRIORITY_STYLES } from "./priorities";
 import { petColorFor } from "./petColors";
 import { apiFetch } from "./api";
@@ -28,11 +29,19 @@ const EMPTY_TASK = {
 
 const EMPTY_PET = { name: "", species: "", age: "", health_notes: "" };
 
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+// The manual form's pet choice when the task is for every pet.
+const ALL_PETS = "all";
+
 const REPEATS = [
-  ["once", "Once"],
-  ["daily", "Daily"],
+  ["once", "Just once"],
+  ["daily", "Every day"],
   ["weekly", "Weekly"],
 ];
+
+// The order the priority chips are shown in.
+const PRIORITY_ORDER = ["high", "medium", "low", "non-negotiable"];
 
 const TASKS_PER_PAGE = 5;
 
@@ -83,7 +92,7 @@ function App() {
   const [rangeEnd, setRangeEnd] = useState("");
   const [hoursMode, setHoursMode] = useState("all");
   const [customHours, setCustomHours] = useState({ from: 8, to: 18 });
-  const [taskPetId, setTaskPetId] = useState(null); // pet picked in the manual form
+  const [taskPetId, setTaskPetId] = useState(null); // pet picked in the manual form (or ALL_PETS)
   // The manual form's pet: the one picked there, else the filtered pet, else the first pet.
   const formPetId = taskPetId ?? selectedPetId ?? pets[0]?.id ?? null;
 
@@ -103,7 +112,7 @@ function App() {
       } else {
         const res = await apiFetch(`/owners`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: JSON_HEADERS,
           body: JSON.stringify({ name: "New Owner" }),
         });
         ownerData = await res.json();
@@ -153,7 +162,7 @@ function App() {
     e.preventDefault();
     await apiFetch(`/owners/${owner.id}/pets`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: JSON_HEADERS,
       body: JSON.stringify({
         name: newPet.name,
         species: newPet.species,
@@ -175,33 +184,61 @@ function App() {
     setCalendarVersion((v) => v + 1);
   }
 
+  // Adds the task for the chosen pet, or for every pet and links the copies into one event.
   async function handleAddTask(e) {
     e.preventDefault();
     setSubmitting(true);
     setTaskError("");
+    const targets = formPetId === ALL_PETS ? pets : pets.filter((p) => p.id === formPetId);
+    const body = JSON.stringify({
+      name: newTask.name,
+      category: newTask.category,
+      priority: newTask.priority,
+      duration_minutes: parseInt(newTask.duration_minutes),
+      scheduled_time: newTask.scheduled_time,
+      start_date: newTask.start_date,
+      end_date: newTask.end_date || null,
+      frequency: newTask.frequency,
+      scheduled_day: newTask.frequency === "weekly" ? newTask.scheduled_day : null,
+    });
+    const created = [];
     try {
-      const res = await apiFetch(`/pets/${formPetId}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newTask.name,
-          category: newTask.category,
-          priority: newTask.priority,
-          duration_minutes: parseInt(newTask.duration_minutes),
-          scheduled_time: newTask.scheduled_time,
-          start_date: newTask.start_date,
-          end_date: newTask.end_date || null,
-          frequency: newTask.frequency,
-          scheduled_day: newTask.frequency === "weekly" ? newTask.scheduled_day : null,
-        }),
-      });
-      if (!res.ok) {
-        setTaskError(formatError(await res.json()));
-        return;
+      for (const pet of targets) {
+        const res = await apiFetch(`/pets/${pet.id}/tasks`, {
+          method: "POST",
+          headers: JSON_HEADERS,
+          body,
+        });
+        if (!res.ok) {
+          const msg = formatError(await res.json());
+          const done = targets.slice(0, created.length).map((p) => p.name).join(", ");
+          setTaskError(
+            targets.length > 1
+              ? `Couldn't add it for ${pet.name}: ${msg}` +
+                  (done ? ` It was already added for ${done}.` : "")
+              : msg
+          );
+          break;
+        }
+        created.push((await res.json()).id);
       }
-      setNewTask(EMPTY_TASK);
-      setCalendarVersion((v) => v + 1);
-      refreshTasks();
+
+      if (created.length > 1) {
+        const link = await apiFetch(`/tasks/link`, {
+          method: "POST",
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ task_ids: created }),
+        });
+        if (!link.ok) {
+          setTaskError("Added the tasks, but couldn't link them, so they show as separate events.");
+        }
+      }
+
+      if (created.length > 0) {
+        setCalendarVersion((v) => v + 1);
+        refreshTasks();
+      }
+      if (created.length === targets.length) setNewTask(EMPTY_TASK);
     } finally {
       setSubmitting(false);
     }
@@ -352,110 +389,151 @@ function App() {
           </form>
         </Card>
 
-        <div className="ak-row">
-          <Card title="Add tasks with Akita">
-            <div className="ak-stack">
+        <Section
+          title="Add tasks"
+          subtitle="Say it in your own words, or fill it in yourself. Both end up on the same calendar."
+        >
+          <CalendarUpload
+            ownerId={owner.id}
+            onChanged={() => setCalendarVersion((v) => v + 1)}
+          />
+
+          <div className="ak-row">
+            <Card title="Note-style" icon={<NoteIcon />} iconColor="#FAE7A2">
+              <p className="ak-card-desc">
+                Type it like you'd tell a friend or write in notes. Akita fills in the pet, time and repeats.
+              </p>
               <ParsePanel
                 ownerId={owner.id}
                 pets={pets}
                 selectedPetId={selectedPetId}
                 onSaved={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
               />
-              <CalendarUpload
-                ownerId={owner.id}
-                onChanged={() => setCalendarVersion((v) => v + 1)}
-              />
-            </div>
-          </Card>
+            </Card>
 
-          <Card title="Fill it in yourself">
-            {pets.length === 0 ? (
-              <p>Add a pet first, then you can add tasks.</p>
-            ) : (
-              <form className="ak-form" onSubmit={handleAddTask}>
-                <div className="ak-choice" role="group" aria-labelledby="mt-pet">
-                  <span id="mt-pet" className="ak-field-label">Pet</span>
-                  <div className="ak-chips">
-                    {pets.map((p) => (
-                      <Chip key={p.id} selected={p.id === formPetId} onClick={() => setTaskPetId(p.id)}>
-                        {p.name}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-
-                <Field label="Task name">
-                  <input required value={newTask.name}
-                    onChange={(e) => setTaskField("name", e.target.value)} />
-                </Field>
-                <Field label="Kind">
-                  <select value={newTask.category} onChange={(e) => setTaskField("category", e.target.value)}>
-                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </Field>
-
-                <div className="ak-choice" role="group" aria-labelledby="mt-priority">
-                  <span id="mt-priority" className="ak-field-label">Priority</span>
-                  <div className="ak-chips">
-                    {PRIORITIES.map((p) => (
-                      <Chip key={p} selected={newTask.priority === p}
-                        onClick={() => setTaskField("priority", p)}>
-                        {PRIORITY_STYLES[p]?.label ?? p}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-
-                <Field label="Minutes">
-                  <input type="number" min="1" max="240" required value={newTask.duration_minutes}
-                    onChange={(e) => setTaskField("duration_minutes", e.target.value)} />
-                </Field>
-                <Field label="Start time">
-                  <input type="time" required value={newTask.scheduled_time}
-                    onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
-                </Field>
-                <Field label="Starts on">
-                  <input type="date" required value={newTask.start_date}
-                    onChange={(e) => setTaskField("start_date", e.target.value)} />
-                </Field>
-                <Field label="Ends on (optional)">
-                  <input type="date" value={newTask.end_date}
-                    onChange={(e) => setTaskField("end_date", e.target.value)} />
-                </Field>
-
-                <div className="ak-choice" role="group" aria-labelledby="mt-repeat">
-                  <span id="mt-repeat" className="ak-field-label">Repeats</span>
-                  <div className="ak-chips">
-                    {REPEATS.map(([value, label]) => (
-                      <Chip key={value} selected={newTask.frequency === value}
-                        onClick={() => setTaskField("frequency", value)}>
-                        {label}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-                {newTask.frequency === "weekly" && (
-                  <div className="ak-choice" role="group" aria-labelledby="mt-day">
-                    <span id="mt-day" className="ak-field-label">On</span>
+            <Card title="Fill it in yourself" icon={<PencilIcon />} iconColor="#DCCFF8">
+              {pets.length === 0 ? (
+                <p>Add a pet first, then you can add tasks.</p>
+              ) : (
+                <form className="ak-form ak-form-stack" onSubmit={handleAddTask}>
+                  <div className="ak-choice" role="group" aria-labelledby="mt-pet">
+                    <span id="mt-pet" className="ak-field-label">Pet</span>
                     <div className="ak-chips">
-                      {DAYS.map((d) => (
-                        <Chip key={d} selected={newTask.scheduled_day === d}
-                          onClick={() => setTaskField("scheduled_day", d)}>
-                          {d}
+                      {pets.map((p) => (
+                        <Chip
+                          key={p.id}
+                          className="ak-chip-avatar"
+                          icon={<Avatar name={p.name} color={colorOf(p.id)} size={28} />}
+                          selected={p.id === formPetId}
+                          onClick={() => setTaskPetId(p.id)}
+                        >
+                          {p.name}
+                        </Chip>
+                      ))}
+                      {pets.length > 1 && (
+                        <Chip
+                          selected={formPetId === ALL_PETS}
+                          onClick={() => setTaskPetId(ALL_PETS)}
+                        >
+                          All pets
+                        </Chip>
+                      )}
+                    </div>
+                    {formPetId === ALL_PETS && (
+                      <span className="ak-hint">
+                        Adds the same task for every pet and shows it as one event on the calendar.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="ak-fields">
+                    <Field label="Task name">
+                      <input required value={newTask.name}
+                        onChange={(e) => setTaskField("name", e.target.value)} />
+                    </Field>
+                    <Field label="Kind">
+                      <select value={newTask.category} onChange={(e) => setTaskField("category", e.target.value)}>
+                        {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Start time">
+                      <input type="time" required value={newTask.scheduled_time}
+                        onChange={(e) => setTaskField("scheduled_time", e.target.value)} />
+                    </Field>
+                    <Field label="How long (minutes)">
+                      <input type="number" min="1" max="240" required value={newTask.duration_minutes}
+                        onChange={(e) => setTaskField("duration_minutes", e.target.value)} />
+                    </Field>
+                  </div>
+
+                  <div className="ak-choice" role="group" aria-labelledby="mt-priority">
+                    <span id="mt-priority" className="ak-field-label">Priority</span>
+                    <div className="ak-chips">
+                      {PRIORITY_ORDER.map((p) => {
+                        const s = PRIORITY_STYLES[p];
+                        const selected = newTask.priority === p;
+                        return (
+                          <Chip
+                            key={p}
+                            icon={<PriorityDot priority={p} />}
+                            selected={selected}
+                            style={selected && s ? { background: s.bg, borderColor: s.border } : undefined}
+                            onClick={() => setTaskField("priority", p)}
+                          >
+                            {s?.label ?? p}
+                          </Chip>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="ak-choice" role="group" aria-labelledby="mt-repeat">
+                    <span id="mt-repeat" className="ak-field-label">Repeats</span>
+                    <div className="ak-chips">
+                      {REPEATS.map(([value, label]) => (
+                        <Chip key={value} selected={newTask.frequency === value}
+                          onClick={() => setTaskField("frequency", value)}>
+                          {label}
                         </Chip>
                       ))}
                     </div>
+                    {newTask.frequency === "weekly" && (
+                      <div className="ak-chips" role="group" aria-label="Day of the week">
+                        {DAYS.map((d) => (
+                          <Chip
+                            key={d}
+                            className="ak-day"
+                            aria-label={d}
+                            selected={newTask.scheduled_day === d}
+                            onClick={() => setTaskField("scheduled_day", d)}
+                          >
+                            {d.slice(0, 3)}
+                          </Chip>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
 
-                <Button variant="primary" type="submit" disabled={submitting}>
-                  {submitting ? "Adding..." : "Add task"}
-                </Button>
-                {taskError && <p className="ak-error" role="alert">{taskError}</p>}
-              </form>
-            )}
-          </Card>
-        </div>
+                  <div className="ak-fields">
+                    <Field label="Starts on">
+                      <input type="date" required value={newTask.start_date}
+                        onChange={(e) => setTaskField("start_date", e.target.value)} />
+                    </Field>
+                    <Field label="Ends on (optional)">
+                      <input type="date" value={newTask.end_date}
+                        onChange={(e) => setTaskField("end_date", e.target.value)} />
+                    </Field>
+                  </div>
+
+                  <Button variant="primary" type="submit" className="ak-btn-block" disabled={submitting}>
+                    {submitting ? "Adding..." : formPetId === ALL_PETS ? "Add for all pets" : "Add task"}
+                  </Button>
+                  {taskError && <p className="ak-error" role="alert">{taskError}</p>}
+                </form>
+              )}
+            </Card>
+          </div>
+        </Section>
 
         <ConflictPanel
           ownerId={owner.id}

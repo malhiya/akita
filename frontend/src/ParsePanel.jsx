@@ -172,8 +172,7 @@ export default function ParsePanel({ ownerId, pets, selectedPetId, onSaved }) {
         {text.length}/{MAX_CHARS} · one task per line
         {selectedPetName && ` · lines without a pet name go to ${selectedPetName}`}
       </div>
-      <Button variant="primary" onClick={handlePreview} disabled={loading || saving || !text.trim()}>
-        {loading ? "Parsing..." : "Preview with Akita"}
+      <Button variant="primary" className="ak-btn-block" onClick={handlePreview} disabled={loading || saving || !text.trim()}>        {loading ? "Parsing..." : "Preview with Akita"}
       </Button>
 
       {error && <p className="ak-error" role="alert">{error}</p>}

@@ -112,12 +112,41 @@ export default function CalendarUpload({ ownerId, onChanged }) {
   }
 
   return (
-    <div className="ak-panel">
-      <strong className="ak-panel-title">Your calendar (optional)</strong>
-      <p>
-        Upload an .ics export of your own calendar and fix suggestions will steer pet tasks away from your busy
-        times. Only start and end times are kept: event titles and details are never stored or sent to the AI.
-        It covers the next {WINDOW_DAYS} days, so upload again to refresh.
+    <div className="ak-upload">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".ics,text/calendar"
+        onChange={handleFile}
+        disabled={working}
+        hidden
+      />
+
+      <div className="ak-upload-row">
+        <Button onClick={() => inputRef.current?.click()} disabled={working}>
+          Upload my calendar
+        </Button>
+        <p className="ak-upload-caption">
+          Optional: upload an .ics export of your own calendar (for example from Google Calendar) so Akita
+          can build around your busy times.
+        </p>
+      </div>
+
+      {periods > 0 && (
+        <div className="ak-upload-status">
+          <span className="ak-ok">{periods} busy periods loaded.</span>
+          <Button size="sm" variant="danger" onClick={handleRemove} disabled={working}>
+            Remove calendar
+          </Button>
+        </div>
+      )}
+      {working && <span className="ak-hint">Working...</span>}
+      {message && <div className="ak-ok" role="status">{message}</div>}
+      {error && <div className="ak-error" role="alert">{error}</div>}
+
+      <p className="ak-hint">
+        Only start and end times are kept: event titles and details are never stored or sent to the AI. It
+        covers the next {WINDOW_DAYS} days, so upload again to refresh.
       </p>
       <details>
         <summary>How do I get an .ics file?</summary>
@@ -127,30 +156,6 @@ export default function CalendarUpload({ ownerId, onChanged }) {
           <li>Outlook: publish or export the calendar as an .ics file.</li>
         </ul>
       </details>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".ics,text/calendar"
-        onChange={handleFile}
-        disabled={working}
-        hidden
-      />
-      <div className="ak-toolbar">
-        <Button onClick={() => inputRef.current?.click()} disabled={working}>
-          Upload my calendar
-        </Button>
-        {periods > 0 && (
-          <>
-            <span className="ak-ok">{periods} busy periods loaded.</span>
-            <Button size="sm" variant="danger" onClick={handleRemove} disabled={working}>
-              Remove calendar
-            </Button>
-          </>
-        )}
-        {working && <span>Working...</span>}
-      </div>
-      {message && <div className="ak-ok" role="status">{message}</div>}
-      {error && <div className="ak-error" role="alert">{error}</div>}
     </div>
   );
 }
