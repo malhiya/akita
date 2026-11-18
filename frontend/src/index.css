@@ -1060,3 +1060,88 @@ body {
   gap: 12px;
   margin-bottom: 16px;
 }
+
+/* ---------- calendar upload: one line + info pop-over ---------- */
+.ak-app .ak-up {
+  margin-bottom: 16px;
+}
+.ak-app .ak-up-row,
+.ak-app .ak-up-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.ak-app .ak-up-status,
+.ak-app .ak-up-msg {
+  margin-top: 12px;
+}
+.ak-app .ak-up-caption {
+  font-size: 15px;
+  color: var(--ak-muted);
+}
+.ak-app .ak-info {
+  position: relative;
+  display: inline-flex;
+}
+.ak-app .ak-info-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--ak-muted);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ak-muted);
+  font: 800 13px/1 var(--ak-font-body);
+  cursor: help;
+}
+.ak-app .ak-info-btn:hover,
+.ak-app .ak-info-btn:focus-visible {
+  border-color: var(--ak-sage);
+  color: var(--ak-sage-dark);
+}
+.ak-app .ak-info-btn:focus-visible {
+  outline: 2px solid var(--ak-sage);
+  outline-offset: 2px;
+}
+.ak-app .ak-info-tip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: -8px;
+  z-index: 30;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  padding-top: 8px; /* keeps the pop-over open while the pointer moves onto it */
+}
+.ak-app .ak-info:hover .ak-info-tip,
+.ak-app .ak-info:focus-within .ak-info-tip {
+  display: block;
+}
+.ak-app .ak-info-box {
+  padding: 14px 16px;
+  border: 1px solid var(--ak-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(43, 42, 51, 0.14);
+  color: var(--ak-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.ak-app .ak-info-box p {
+  margin: 0 0 10px;
+}
+.ak-app .ak-info-box strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.ak-app .ak-info-box ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.ak-app .ak-info-box li + li {
+  margin-top: 4px;
+}

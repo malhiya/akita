@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { formatError } from "./taskOptions";
 import { apiFetch } from "./api";
 import { Button } from "./ui";
@@ -43,6 +43,7 @@ export default function CalendarUpload({ ownerId, onChanged }) {
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
   const inputRef = useRef(null);
+  const tipId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +113,7 @@ export default function CalendarUpload({ ownerId, onChanged }) {
   }
 
   return (
-    <div className="ak-upload">
+    <div className="ak-up">
       <input
         ref={inputRef}
         type="file"
@@ -122,40 +123,54 @@ export default function CalendarUpload({ ownerId, onChanged }) {
         hidden
       />
 
-      <div className="ak-upload-row">
+      <div className="ak-up-row">
         <Button onClick={() => inputRef.current?.click()} disabled={working}>
           Upload my calendar
         </Button>
-        <p className="ak-upload-caption">
-          Optional: upload an .ics export of your own calendar (for example from Google Calendar) so Akita
-          can build around your busy times.
-        </p>
+        <span className="ak-up-caption">
+          Optional: upload an .ics export of your calendar so Akita can build around your busy times.
+        </span>
+        <span className="ak-info">
+          <button
+            type="button"
+            className="ak-info-btn"
+            aria-label="More about uploading your calendar"
+            aria-describedby={tipId}
+          >
+            i
+          </button>
+          <div id={tipId} role="tooltip" className="ak-info-tip">
+            <div className="ak-info-box">
+              <p>
+                Only start and end times are kept: event titles and details are never stored or sent to
+                the AI. It covers the next {WINDOW_DAYS} days, so upload again to refresh.
+              </p>
+              <strong>How do I get an .ics file?</strong>
+              <ul>
+                <li>Google Calendar: Settings, then Import &amp; export, then Export. It downloads a .zip; unzip it and use one of the .ics files inside.</li>
+                <li>Apple Calendar: File, then Export, then Export…</li>
+                <li>Outlook: publish or export the calendar as an .ics file.</li>
+              </ul>
+            </div>
+          </div>
+        </span>
       </div>
 
-      {periods > 0 && (
-        <div className="ak-upload-status">
-          <span className="ak-ok">{periods} busy periods loaded.</span>
-          <Button size="sm" variant="danger" onClick={handleRemove} disabled={working}>
-            Remove calendar
-          </Button>
+      {(periods > 0 || working) && (
+        <div className="ak-up-status">
+          {periods > 0 && (
+            <>
+              <span className="ak-ok">{periods} busy periods loaded.</span>
+              <Button size="sm" variant="danger" onClick={handleRemove} disabled={working}>
+                Remove calendar
+              </Button>
+            </>
+          )}
+          {working && <span>Working...</span>}
         </div>
       )}
-      {working && <span className="ak-hint">Working...</span>}
-      {message && <div className="ak-ok" role="status">{message}</div>}
-      {error && <div className="ak-error" role="alert">{error}</div>}
-
-      <p className="ak-hint">
-        Only start and end times are kept: event titles and details are never stored or sent to the AI. It
-        covers the next {WINDOW_DAYS} days, so upload again to refresh.
-      </p>
-      <details>
-        <summary>How do I get an .ics file?</summary>
-        <ul>
-          <li>Google Calendar: Settings, then Import &amp; export, then Export. It downloads a .zip; unzip it and use one of the .ics files inside.</li>
-          <li>Apple Calendar: File, then Export, then Export…</li>
-          <li>Outlook: publish or export the calendar as an .ics file.</li>
-        </ul>
-      </details>
+      {message && <div className="ak-ok ak-up-msg" role="status">{message}</div>}
+      {error && <div className="ak-error ak-up-msg" role="alert">{error}</div>}
     </div>
   );
 }
