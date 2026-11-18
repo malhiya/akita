@@ -10,7 +10,7 @@ import Avatar from "./Avatar";
 import { NoteIcon, PencilIcon } from "./icons";
 import { PriorityDot, PriorityPill } from "./PriorityBadge";
 import { Button, Card, Chip, Field, Section, Segmented } from "./ui";
-import { CATEGORIES, DAYS, describeSchedule, formatError } from "./taskOptions";
+import { CATEGORIES, DAYS, PRIORITY_ORDER, describeSchedule, formatError } from "./taskOptions";
 import { PRIORITY_STYLES } from "./priorities";
 import { petColorFor } from "./petColors";
 import { apiFetch } from "./api";
@@ -40,9 +40,6 @@ const REPEATS = [
   ["weekly", "Weekly"],
 ];
 
-// The order the priority chips are shown in.
-const PRIORITY_ORDER = ["high", "medium", "low", "non-negotiable"];
-
 const TASKS_PER_PAGE = 5;
 
 // The calendar's date choices. The keys (except default and custom) match showPreset.
@@ -64,7 +61,26 @@ const HOURS_OPTIONS = [
 const ALL_HOURS = { from: 0, to: 24 };
 const DAYTIME = { from: 7, to: 21 };
 
+// The calendar's Day / Week / Month switcher (values are FullCalendar view names).
+const VIEW_OPTIONS = [
+  { value: "timeGridDay", label: "Day" },
+  { value: "timeGridWeek", label: "Week" },
+  { value: "dayGridMonth", label: "Month" },
+];
+
+// What the calendar heading calls the period on screen when it includes today.
+const PERIOD_NAMES = {
+  timeGridDay: "Today",
+  timeGridWeek: "This week",
+  dayGridMonth: "This month",
+  customRange: "Your dates",
+};
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// ["Luna", "Max", "Bella"] -> "Luna, Max & Bella"
+const joinNames = (names) =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
 
 function hourLabel(h) {
   if (h === 24) return "12 AM (end of day)";
@@ -87,6 +103,7 @@ function App() {
   const [taskError, setTaskError] = useState("");
   const [calendarVersion, setCalendarVersion] = useState(0);
   const calendarRef = useRef(null);
+  const [calInfo, setCalInfo] = useState(null); // what the calendar is showing, reported by Calendar
   const [rangeMode, setRangeMode] = useState("default");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -156,6 +173,20 @@ function App() {
   function pickPet(id) {
     setSelectedPetId(id);
     setTaskPage(0);
+  }
+
+  // The calendar reports each change of what it shows; keep the old object if nothing differs.
+  function handleViewChange(next) {
+    setCalInfo((prev) =>
+      prev &&
+      prev.type === next.type &&
+      prev.title === next.title &&
+      prev.isCurrent === next.isCurrent &&
+      prev.canPrev === next.canPrev &&
+      prev.canNext === next.canNext
+        ? prev
+        : next
+    );
   }
 
   async function handleAddPet(e) {
@@ -289,6 +320,21 @@ function App() {
   const page = Math.min(taskPage, pageCount - 1);
   const firstTask = page * TASKS_PER_PAGE;
   const visibleTasks = tasks.slice(firstTask, firstTask + TASKS_PER_PAGE);
+
+  // The calendar heading: "This week with Luna & Max", or "Calendar for Luna & Max" when
+  // browsing another period. The subtitle is the date range the calendar reports.
+  const calendarPets =
+    calendarPetId !== null
+      ? petName(calendarPetId)
+      : pets.length === 0
+        ? "your pets"
+        : pets.length <= 3
+          ? joinNames(pets.map((p) => p.name))
+          : "all your pets";
+  const calendarHeading =
+    calInfo && (calInfo.isCurrent || calInfo.type === "customRange")
+      ? `${PERIOD_NAMES[calInfo.type] ?? "This period"} with ${calendarPets}`
+      : `Calendar for ${calendarPets}`;
 
   // The hours the calendar shows, from the Hours dropdown.
   const hours = hoursMode === "all" ? ALL_HOURS : hoursMode === "day" ? DAYTIME : customHours;
@@ -619,20 +665,44 @@ function App() {
           </Card>
         </Section>
 
-        <Section
-          title="Calendar"
-          subtitle={calendarPetId === null ? "All your pets together" : `Just ${petName(calendarPetId)}`}
-          actions={
+        <Section title={calendarHeading} subtitle={calInfo?.title}>
+          <div className="ak-cal-controls">
             <Segmented
               label="Show calendar for"
               options={petOptions}
               value={calendarPetId}
               onChange={setCalendarPetId}
             />
-          }
-        >
+            <Segmented
+              label="Calendar view"
+              options={VIEW_OPTIONS}
+              value={calInfo?.type ?? null}
+              onChange={(type) => calendarRef.current.setView(type)}
+            />
+          </div>
+
           <Card>
             <div className="ak-toolbar">
+              <div className="ak-nav" role="group" aria-label="Move the calendar">
+                <Button
+                  size="sm"
+                  aria-label="Previous"
+                  disabled={!calInfo?.canPrev}
+                  onClick={() => calendarRef.current.prev()}
+                >
+                  ←
+                </Button>
+                <Button
+                  size="sm"
+                  aria-label="Next"
+                  disabled={!calInfo?.canNext}
+                  onClick={() => calendarRef.current.next()}
+                >
+                  →
+                </Button>
+                <Button size="sm" onClick={() => calendarRef.current.today()}>Today</Button>
+              </div>
+
               <label className="ak-inline">
                 Dates
                 <select value={rangeMode} onChange={(e) => chooseRange(e.target.value)}>
@@ -705,18 +775,19 @@ function App() {
               <p className="ak-hint">Tasks outside these hours are hidden in the week and day views.</p>
             )}
 
-            <div className="ak-stack">
-              <SharePanel ownerId={owner.id} />
-            </div>
-
             <Calendar
               ref={calendarRef}
               ownerId={owner.id}
               petId={calendarPetId}
               version={calendarVersion}
               hours={hours}
+              onViewChange={handleViewChange}
               onChanged={() => { setCalendarVersion((v) => v + 1); refreshTasks(); }}
             />
+
+            <div className="ak-share">
+              <SharePanel ownerId={owner.id} />
+            </div>
           </Card>
         </Section>
       </main>

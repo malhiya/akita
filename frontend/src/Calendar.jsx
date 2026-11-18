@@ -1,16 +1,19 @@
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
-import { PRIORITY_STYLES } from "./priorities";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { PRIORITY_STYLES } from "./priorities";
+import { PRIORITY_ORDER } from "./taskOptions";
+import { PriorityDot } from "./PriorityBadge";
 import TaskModal from "./TaskModal";
 import { apiFetch } from "./api";
 
 const BUSY_COLOR = "#9ca3af";
 
+const pad = (n) => String(n).padStart(2, "0");
+
 // Local YYYY-MM-DD (toISOString would shift the date into UTC)
-const ymd = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 // "2026-10-16" -> local midnight on Oct 16 (not UTC)
 const parseLocal = (s) => {
@@ -24,7 +27,7 @@ function toEvent(o) {
   const end = new Date(start.getTime() + o.duration_minutes * 60000);
   return {
     id: `${o.task_ids?.[0] ?? o.task_id}-${o.occurs_on}`,
-    title: `${s.marker} ${o.pet_name}: ${o.name}`,
+    title: `${o.pet_name} · ${o.name} · ${s.label}`,
     start,
     end,
     backgroundColor: s.bg,
@@ -37,6 +40,7 @@ function toEvent(o) {
       petNames: o.pet_names ?? [o.pet_name],
       eventName: o.name,
       occursOn: o.occurs_on,
+      priority: o.priority,
     },
   };
 }
@@ -53,7 +57,42 @@ function toBusyEvent(b, i) {
   };
 }
 
-const Calendar = forwardRef(function Calendar({ ownerId, petId, version, hours = { from: 0, to: 24 }, onChanged }, ref) {
+// A day column header: a small weekday over a big date, today in a green circle.
+function renderDayHeader(arg) {
+  const weekday = arg.date.toLocaleDateString(undefined, { weekday: "short" });
+  if (arg.view.type === "dayGridMonth") return weekday;
+  return (
+    <div className={`ak-dh${arg.isToday ? " is-today" : ""}`}>
+      <div className="ak-dh-dow">{weekday}</div>
+      <div className="ak-dh-num">{arg.date.getDate()}</div>
+    </div>
+  );
+}
+
+// An event's text: the title and its time (the time sits beside the title on short events).
+function renderEvent(arg) {
+  if (arg.event.display === "background") return <></>;
+  const time = arg.timeText;
+  if (arg.view.type === "dayGridMonth") {
+    return (
+      <>
+        {time && <span className="ak-ev-time">{time} </span>}
+        <span className="ak-ev-title">{arg.event.title}</span>
+      </>
+    );
+  }
+  return (
+    <div className="ak-ev">
+      <div className="ak-ev-title">{arg.event.title}</div>
+      {time && <div className="ak-ev-time">{time}</div>}
+    </div>
+  );
+}
+
+const Calendar = forwardRef(function Calendar(
+  { ownerId, petId, version, hours = { from: 0, to: 24 }, onChanged, onViewChange },
+  ref
+) {
   const calRef = useRef(null);
   const [events, setEvents] = useState([]);
   const [busyEvents, setBusyEvents] = useState([]);
@@ -78,6 +117,18 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, hours =
     clearRange() {
       setValidRange(null);
       calRef.current.getApi().changeView("timeGridWeek", new Date());
+    },
+    prev() {
+      calRef.current.getApi().prev();
+    },
+    next() {
+      calRef.current.getApi().next();
+    },
+    today() {
+      calRef.current.getApi().today();
+    },
+    setView(type) {
+      calRef.current.getApi().changeView(type);
     },
   }));
 
@@ -116,6 +167,16 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, hours =
     const end = ymd(info.end);
     setViewType(info.view.type);
     setRange((r) => (r && r.start === start && r.end === end ? r : { start, end }));
+
+    // Tell the page where we are, for its heading and its arrow buttons.
+    const now = new Date();
+    onViewChange?.({
+      type: info.view.type,
+      title: info.view.title,
+      isCurrent: now >= info.view.currentStart && now < info.view.currentEnd,
+      canPrev: !validRange || start > validRange.start,
+      canNext: !validRange || end < validRange.end,
+    });
   }
 
   // In the month grid a background event would shade the whole day, which would
@@ -124,35 +185,45 @@ const Calendar = forwardRef(function Calendar({ ownerId, petId, version, hours =
 
   return (
     <>
-      <div className="ak-key" role="group" aria-label="Priority colors">
-        {Object.entries(PRIORITY_STYLES).map(([key, s]) => (
-          <span
-            key={key}
-            className="ak-key-item"
-            style={{ background: s.bg, borderColor: s.border, color: s.text }}
-          >
-            {s.marker} {s.label}
-          </span>
-        ))}
-        {busyEvents.length > 0 && (
-          <span className="ak-key-item is-busy">Your calendar (busy)</span>
-        )}
+      <div className="ak-legend">
+        <span className="ak-legend-title">Color shows priority</span>
+        <div className="ak-legend-items" role="list" aria-label="Priority colors">
+          {PRIORITY_ORDER.map((p) => (
+            <span key={p} role="listitem" className="ak-legend-item">
+              <PriorityDot priority={p} />
+              {PRIORITY_STYLES[p]?.label ?? p}
+            </span>
+          ))}
+          {busyEvents.length > 0 && (
+            <span role="listitem" className="ak-legend-item">
+              <span className="ak-dot ak-dot-busy" aria-hidden="true" />
+              Your calendar (busy)
+            </span>
+          )}
+        </div>
       </div>
 
       <FullCalendar
         ref={calRef}
         firstDay={1}
-        slotMinTime={`${String(hours.from).padStart(2, "0")}:00:00`}
-        slotMaxTime={`${String(hours.to).padStart(2, "0")}:00:00`}
-        allDaySlot={false}
         plugins={[dayGridPlugin, timeGridPlugin]}
         initialView="timeGridWeek"
-        views={{ customRange: { type: "timeGrid" } }}
+        views={{
+          customRange: { type: "timeGrid" },
+          timeGrid: { displayEventEnd: true },
+        }}
         validRange={validRange ?? undefined}
-        headerToolbar={{
-          left: "prev,next today",
-          center: "title",
-          right: "dayGridMonth,timeGridWeek,timeGridDay",
+        headerToolbar={false}
+        allDaySlot={false}
+        slotMinTime={`${pad(hours.from)}:00:00`}
+        slotMaxTime={`${pad(hours.to)}:00:00`}
+        slotLabelFormat={{ hour: "numeric", minute: "2-digit", omitZeroMinute: true, meridiem: "short" }}
+        eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }}
+        dayHeaderContent={renderDayHeader}
+        eventContent={renderEvent}
+        eventDidMount={(info) => {
+          if (info.event.display === "background") return;
+          info.el.title = `${info.timeText} ${info.event.title}`.trim();
         }}
         events={shown}
         datesSet={handleDatesSet}
